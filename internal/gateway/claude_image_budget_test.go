@@ -79,7 +79,7 @@ func TestClaudeOmpImageBudgetGoesOnInItsRun(t *testing.T) {
 	} {
 		for _, c := range []struct {
 			name string
-			with func(i int) []ompPart // the user's message of turn i, with an image
+			with func(i int) []ompPart // the user's message of turn i: its images are the empty parts
 		}{
 			{"words and an image", func(i int) []ompPart { return []ompPart{{text: fmt.Sprintf("more %d 看这个", i)}, {}} }},
 			{"an image alone", func(int) []ompPart { return []ompPart{{}} }},
