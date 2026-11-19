@@ -462,3 +462,34 @@ func TestRotateToOwnValue(t *testing.T) {
 		t.Fatal("add-key took a provider's key")
 	}
 }
+
+// A key that manages magpie is the strongest credential magpie makes, and
+// the page must not hand it out: a team portal's key sits in its own
+// container precisely so it is never copied out. Rotating it is the
+// command line's, as it is for every change to such a key.
+func TestCopyKeyRefusesAnAdminKey(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("MAGPIE_ADDR", "")
+	if _, err := Update("add-key", Change{Name: "Portal"}); err != nil {
+		t.Fatal(err)
+	}
+	plain, err := Update("add-key", Change{Name: "Laptop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	portal := keys[len(keys)-2].ID
+	if _, err := Update("admin-key", Change{Key: portal, Admin: AdminLocal}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Update("copy-key", Change{Key: portal}); err == nil || got != "" {
+		t.Fatalf("a key that manages magpie was copied: %q", got)
+	}
+	// a key of the user's own still copies
+	if got, err := Update("copy-key", Change{Key: keys[len(keys)-1].ID}); err != nil || got != plain {
+		t.Fatalf("a plain key wasn't copied: %v", err)
+	}
+}

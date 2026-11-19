@@ -764,6 +764,13 @@ func Update(action string, in Change) (string, error) {
 			k := keys[i]
 			keys = slices.Insert(slices.Delete(keys, i, i+1), *in.Index, k)
 		case "copy-key":
+			// a key that manages magpie is the strongest credential here, and
+			// the page must not hand it out: a portal's key sits in its own
+			// container so it is never copied out. Rotating one is the command
+			// line's, as every change to such a key is.
+			if keys[i].Admin != "" {
+				return "", errors.New("This key manages magpie, so its secret isn't shown: rotate it with `magpie gateway-key rotate " + keys[i].ID + "`")
+			}
 			return keys[i].Secret, nil
 		default:
 			return "", fmt.Errorf("unknown key action %q", action)
