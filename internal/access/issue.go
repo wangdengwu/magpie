@@ -8,6 +8,7 @@ import (
 	"math"
 	"regexp/syntax"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,10 +25,14 @@ import (
 // change to the issuer reaches its keys at once), and what it spends
 // counts against its issuer's limits too (budget, Identity.Issuer).
 
-// MinTTL and MaxTTL bound how long an issued key lives.
+// MinTTL and MaxTTL bound how long an issued key lives. MaxTTL is also
+// what an OIDC rule may ask for; MaxIssuedTTL is what a key issued for a
+// person may live, which is longer: a team portal hands a member one key
+// to keep, and "permanent" on its page is MaxIssuedTTL.
 const (
-	MinTTL = time.Minute
-	MaxTTL = 30 * 24 * time.Hour
+	MinTTL       = time.Minute
+	MaxTTL       = 30 * 24 * time.Hour
+	MaxIssuedTTL = 100 * 365 * 24 * time.Hour
 )
 
 // expiredKept is how long an expired key stays in the store after it
@@ -90,16 +95,28 @@ func IssueKey(in Issue) (Issued, error) {
 	now := Now().Round(0)
 	keys, _ = prune(keys, now)
 	name := strings.TrimSpace(in.Name)
-	if name == "" {
+	named := name != ""
+	if !named {
 		name = "Issued " + now.Format("2006-01-02 15:04")
 	}
 	if utf8.RuneCountInString(name) > 120 {
 		return Issued{}, errors.New("Use a name between 1 and 120 characters")
 	}
-	if in.TTL < MinTTL || in.TTL > MaxTTL {
-		return Issued{}, fmt.Errorf("An issued key lives from %s to %d days: give a ttl such as 1h", MinTTL, int(MaxTTL.Hours()/24))
+	if in.TTL < MinTTL || in.TTL > MaxIssuedTTL {
+		return Issued{}, fmt.Errorf("An issued key lives from %s to %d days: give a ttl such as 1h", MinTTL, int(MaxIssuedTTL.Hours()/24))
 	}
 	expires := now.Add(in.TTL)
+	// a name given is what a portal's list says a member's key is: two live
+	// keys under one issuer can't share one, and a name whose keys are all
+	// expired or gone is free again. A key nobody named keeps the stamp it
+	// is shown by, which two issued in one minute share.
+	if named {
+		for _, k := range keys {
+			if k.Issuer == in.Issuer && !k.expired(now) && strings.EqualFold(k.Name, name) {
+				return Issued{}, fmt.Errorf("The key issuing already has a live key named %q: use another name, or revoke that one first", name)
+			}
+		}
+	}
 	models, err := CleanModels(in.Models)
 	if err != nil {
 		return Issued{}, err
@@ -178,6 +195,40 @@ func IssueKey(in Issue) (Issued, error) {
 		return Issued{}, err
 	}
 	return Issued{ID: k.ID, Name: k.Name, Key: k.Secret, Expires: k.Expires, Issuer: k.Issuer, Models: models, Accounts: accounts, Limit: lim, ReadOnly: readOnly}, nil
+}
+
+// IssueUnder says why no key can be issued under id now, and nil when one
+// can: the check a portal makes before its page offers to issue, so the
+// answer names what is wrong with the team's key. It reads the keys as
+// IssueKey does — List clears every secret, so it can't be used here.
+func IssueUnder(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("name the issuer: the gateway key the keys are issued under")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	keys, err := load()
+	if err != nil {
+		return err
+	}
+	for _, k := range keys {
+		if k.ID != id {
+			continue
+		}
+		switch {
+		case k.Off:
+			return errors.New("the gateway key " + strconv.Quote(id) + " is switched off: what it issued would reach nothing")
+		case k.Secret == "":
+			return errors.New("the gateway key " + strconv.Quote(id) + " has no secret")
+		case k.Issuer != "":
+			return errors.New("the gateway key " + strconv.Quote(id) + " was issued itself, so it can't issue keys")
+		case !k.Issues:
+			return errors.New("the gateway key " + strconv.Quote(id) + " can't issue keys: let it with `magpie gateway-key issuer " + id + " on`")
+		}
+		return nil
+	}
+	return errors.New("magpie has no gateway key " + strconv.Quote(id))
 }
 
 // RevokeIssued removes the issued key id. by is the key asking: it may

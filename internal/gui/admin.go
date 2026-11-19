@@ -81,7 +81,8 @@ var adminProviderActions = []string{
 	"test", "teststop", "detect", "balance", "models", "list",
 }
 
-// adminKeyActions are access.Update's actions but "admin-key" and "copy-key".
+// adminKeyActions are access.Update's actions but "admin-key" and
+// "copy-key".
 var adminKeyActions = []string{
 	"add-key", "rotate-key", "rename-key", "limit-key", "reset-limit-key",
 	"models-key", "aliases-key", "accounts-key", "mcp-key", "quotas-key",
@@ -138,6 +139,13 @@ func adminAPI() http.Handler {
 	})
 	mux.HandleFunc("POST /routing-groups/create", func(w http.ResponseWriter, r *http.Request) { adminGroupWrite(app, w, r, true) })
 	mux.HandleFunc("POST /routing-groups/update", func(w http.ResponseWriter, r *http.Request) { adminGroupWrite(app, w, r, false) })
+	// Member keys: a team portal issues a lead's members keys under the
+	// team's own gateway key, and lists and revokes them. These are the
+	// API's own, not the app's — the app's page is a person's, and these
+	// are a portal's — so they sit here, beside the routes above.
+	mux.HandleFunc("POST /gateway-keys/issue-key", adminIssueKey)
+	mux.HandleFunc("GET /gateway-keys/issued-keys", adminIssuedKeys)
+	mux.HandleFunc("POST /gateway-keys/revoke-key", adminRevokeKey)
 	// Signing in: the vendor's page and the code to type there are the
 	// answer, for the caller to open on a computer with a browser. Never
 	// opened here, and never given a password: the vendor's page takes it.

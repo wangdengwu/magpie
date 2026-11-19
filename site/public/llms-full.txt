@@ -10617,7 +10617,7 @@ The shared magpie counts this computer’s requests under the name of the gatewa
 
 ## Short-lived keys
 
-A program that starts agents in sandboxes can give each one a gateway key of its own that stops working by itself. The key lives 1 minute to 30 days, and may be held to some models, some accounts, a number of tokens or a cost over its whole life, or to read-only use. Its secret is told once, in the answer.
+A program that starts agents in sandboxes can give each one a gateway key of its own that stops working by itself. The key lives 1 minute to 100 years (a team portal offers 7 days, 30 days, 90 days or permanent), and may be held to some models, some accounts, a number of tokens or a cost over its whole life, or to read-only use. Its secret is told once, in the answer.
 
 ```
 curl -s -X POST http://127.0.0.1:3425/v1/magpie/keys \

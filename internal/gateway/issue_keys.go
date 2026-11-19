@@ -3,7 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -132,9 +132,11 @@ func (s *Server) revokeIssuedKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"revoked": r.PathValue("id")})
 }
 
-// parseTTL reads a ttl given as a duration ("1h") or seconds (3600).
+// parseTTL reads a ttl given as a duration ("1h") or seconds (3600). Its
+// words name the cap the constants hold, so it doesn't go stale the day
+// one of them moves.
 func parseTTL(raw json.RawMessage) (time.Duration, error) {
-	bad := errors.New("ttl is how long the key lives, such as \"1h\", \"30m\" or 3600 (seconds), from 1m to 720h")
+	bad := fmt.Errorf("ttl is how long the key lives, such as \"1h\", \"30m\" or 3600 (seconds), from %s to %d days", access.MinTTL, int(access.MaxIssuedTTL.Hours()/24))
 	if len(raw) == 0 {
 		return 0, bad
 	}
@@ -147,7 +149,7 @@ func parseTTL(raw json.RawMessage) (time.Duration, error) {
 		return d, nil
 	}
 	var n float64
-	if json.Unmarshal(raw, &n) != nil || n <= 0 || n > access.MaxTTL.Seconds() {
+	if json.Unmarshal(raw, &n) != nil || n <= 0 || n > access.MaxIssuedTTL.Seconds() {
 		return 0, bad
 	}
 	return time.Duration(n * float64(time.Second)), nil

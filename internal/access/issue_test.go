@@ -3,6 +3,7 @@ package access
 import (
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -77,7 +78,7 @@ func TestIssuedKeyExpires(t *testing.T) {
 
 func TestIssueKeyRefusesBadTTL(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	for _, ttl := range []time.Duration{0, -time.Hour, time.Second, MaxTTL + time.Hour} {
+	for _, ttl := range []time.Duration{0, -time.Hour, time.Second, MaxIssuedTTL + time.Hour} {
 		if _, err := IssueKey(Issue{TTL: ttl}); err == nil {
 			t.Error("issued with ttl", ttl)
 		}
@@ -268,5 +269,75 @@ func TestRevokeIssued(t *testing.T) {
 	}
 	if _, ok := Authenticate(ka.Key); ok {
 		t.Fatal("a revoked key was let in")
+	}
+}
+
+// A team portal issues a member's key for as long as the team wants it,
+// up to a century: "permanent" on the page is 100 years, and the issuer's
+// own life still bounds it.
+func TestIssuedKeyTakesALongLife(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	clockAt(t, time.Date(2026, 11, 19, 9, 0, 0, 0, time.UTC))
+	for _, ttl := range []time.Duration{7 * 24 * time.Hour, MaxTTL, 365 * 24 * time.Hour, MaxIssuedTTL} {
+		if _, err := IssueKey(Issue{Name: "member " + ttl.String(), TTL: ttl}); err != nil {
+			t.Errorf("issued for %s: %v", ttl, err)
+		}
+	}
+	if _, err := IssueKey(Issue{Name: "too long", TTL: MaxIssuedTTL + 24*time.Hour}); err == nil {
+		t.Fatal("issued past the cap")
+	}
+}
+
+// The cap a refusal names is the one the constant holds: OIDC's 30 days
+// and a member key's 100 years must not drift apart from their error text.
+func TestIssuedKeyErrorNamesTheRealCap(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	_, err := IssueKey(Issue{TTL: MaxIssuedTTL + time.Hour})
+	if err == nil {
+		t.Fatal("issued past the cap")
+	}
+	want := strconv.Itoa(int(MaxIssuedTTL.Hours() / 24))
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("the refusal %q doesn't name the %s-day cap", err, want)
+	}
+	if MaxTTL != 30*24*time.Hour {
+		t.Errorf("MaxTTL is %s: OIDC's 30 days moved with the member keys'", MaxTTL)
+	}
+}
+
+// Two live keys under one issuer cannot share a name; a name whose key is
+// no longer live is free again.
+func TestIssuedKeyNamesAreUniquePerIssuer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	advance := clockAt(t, time.Date(2026, 11, 19, 9, 0, 0, 0, time.UTC))
+	pid, _ := addKey(t, "Team")
+	other, _ := addKey(t, "Another Team")
+	for _, id := range []string{pid, other} {
+		if _, err := Update("issuer-key", Change{Key: id, Issues: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := IssueKey(Issue{Name: "Alice", TTL: 24 * time.Hour, Issuer: pid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := IssueKey(Issue{Name: "alice", TTL: 24 * time.Hour, Issuer: pid}); err == nil {
+		t.Fatal("a second live key took the same name, whatever its case")
+	}
+	// another issuer's keys are another namespace
+	if _, err := IssueKey(Issue{Name: "Alice", TTL: 24 * time.Hour, Issuer: other}); err != nil {
+		t.Fatalf("another team couldn't use the name: %v", err)
+	}
+	// once the first is gone, the name is free
+	if err := RevokeIssued(first.ID, pid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := IssueKey(Issue{Name: "Alice", TTL: 24 * time.Hour, Issuer: pid}); err != nil {
+		t.Fatalf("a revoked key's name wasn't free: %v", err)
+	}
+	// and once it has expired
+	advance(25 * time.Hour)
+	if _, err := IssueKey(Issue{Name: "Alice", TTL: 24 * time.Hour, Issuer: pid}); err != nil {
+		t.Fatalf("an expired key's name wasn't free: %v", err)
 	}
 }
