@@ -1128,13 +1128,22 @@ and 1000x700, in Chromium and WebKit, English and Chinese.
 
 `group-pick-filter.test.cjs` covers a group's Add a model picker and the
 filter over the routing groups (#907; PAMI on Discord). A model in the group
-with its reasoning fixed (a/two:max) is ticked, and a click takes that member
-out instead of adding it a second time. A model that is in other groups names
+with its reasoning fixed (a/two:max) is a ticked row of its own, and a click
+takes that member out; the model's own row under it is not ticked. A model
+that is in other groups names
 them, and the whole note shows on hover. The filter keeps the groups whose
 name, id or models match every word typed, and the keyboard stays in it.
 When nothing matches it says so, and Escape clears it. The page never moves,
 and there is no select or left border. In Chromium and WebKit, English and
 Chinese.
+
+`group-member-again.test.cjs` covers adding a model to a group a second
+time at another reasoning (visamzh on X: gpt-6.2-sol at high and at xhigh).
+With sol in the group at xhigh, the picker lists that member ticked and sol
+itself not; a click on sol adds it again, its reasoning is fixed at high, and
+the save sends both members. A group read with sol at two levels keeps both
+rows and sends both back. It fails on the picker that took the model as its
+member at a level. In Chromium and WebKit, English and Chinese.
 
 `old-webkit.test.cjs` holds the page to Safari 15.0, the WebKit macOS 12 can
 have (#220: a regex lookbehind in app.js, a syntax error before Safari 16.4,
@@ -1201,6 +1210,14 @@ every long name is shown whole, each card's bars start at one place and are
 at least 5em, at 420 wide the long names are shortened while no bar is under
 5em and nothing runs past its card, and wide again the names are whole; in
 Chromium and WebKit, English and Chinese.
+
+`usage-cards-steady.test.cjs` opens Usage › Overview with eight allowance
+cards, most still being read (`X-Magpie-Reading`), wheels down and back up
+to a card in the middle, then lets the reads and the curves' history in
+400ms apart. The card being read must not move a pixel in any frame;
+opened again with the heights known, no card in sight may move. All five
+languages, 1100px and 420px, Chromium and WebKit; the API is faked.
+`MAGPIE_ASSETS` selects older assets for the failing comparison.
 
 `usage-sessions-agents-fit.test.cjs` checks Usage › Sessions with 15 agents
 (#929): the agent filter is a menu button like the model and folder ones, no
@@ -1715,6 +1732,12 @@ never reached the vendor, went on to the next and that the first doesn't
 rest, tagged "proxy not reachable", in English and Chinese, never "an error
 another account wouldn't fix"; picking the request doesn't move the page.
 Chromium and WebKit, API faked.
+
+`proxy-down.test.cjs` opens Settings → Network with the proxy on Auto and
+a system proxy on loopback that nothing listens on (@bitssly on X: a VPN
+app turned off left Windows' proxy at its port). The proxy line names the
+address found and says requests go direct until it runs again, in all five
+languages, at 1100px and 420px, Chromium and WebKit. The API is faked.
 
 `s3-sync.test.cjs` sets up sync to an S3 bucket from Settings (#296). It
 works as follows, in English and Chinese:
