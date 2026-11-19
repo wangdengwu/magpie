@@ -56,6 +56,7 @@ import (
 	"github.com/yetone/magpie/internal/sessions"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/settingsapi"
+	"github.com/yetone/magpie/internal/teamd"
 	"github.com/yetone/magpie/internal/update"
 	"github.com/yetone/magpie/internal/usage"
 )
@@ -1218,6 +1219,12 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	}))
 	devRoutes(mux)
 	pluginPageRoutes(mux, isWeb(w))
+	// the team portal's ops page: a team and its link are made here, in
+	// magpie's own process, behind the page's sign-in
+	if store, err := teamd.NewStore(teamdOpsDir(), 0); err == nil {
+		o := opsRoutes(store, guiMagpie{})
+		mux.Handle("/ops/", o)
+	}
 	feedbackRoutes(mux)
 	appearanceRoutes(mux)
 	// the app's page closed or hidden: what its pages keep goes soon
