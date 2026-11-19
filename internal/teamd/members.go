@@ -20,18 +20,19 @@ import (
 // memberTTLs are the lifetimes the form offers, as the values it posts and
 // the words it shows. "forever" is the cap the constants hold: a hundred
 // years, which the page draws as permanent.
-// memberTTL is one lifetime the form offers.
+// memberTTL is one lifetime the form offers: the value it posts, the word
+// key it is shown by, and the lifetime itself.
 type memberTTL struct {
 	Value string
-	Word  string
+	Key   string
 	TTL   time.Duration
 }
 
 var memberTTLs = []memberTTL{
-	{"7d", "7 days", 7 * 24 * time.Hour},
-	{"30d", "30 days", 30 * 24 * time.Hour},
-	{"90d", "90 days", 90 * 24 * time.Hour},
-	{"forever", "permanent", MaxMemberTTL},
+	{"7d", "members.ttl.7d", 7 * 24 * time.Hour},
+	{"30d", "members.ttl.30d", 30 * 24 * time.Hour},
+	{"90d", "members.ttl.90d", 90 * 24 * time.Hour},
+	{"forever", "members.ttl.forever", MaxMemberTTL},
 }
 
 // MaxMemberTTL is how long "permanent" is: magpie's cap for an issued key,
@@ -72,6 +73,8 @@ type Members struct {
 	IssuedUntil string
 	// TTLs are the lifetimes the form offers.
 	TTLs []memberTTL
+	// Trans is the language the page is drawn in.
+	Trans trans
 	// Notice is what the last action did, "" when this draw isn't the
 	// answer to one.
 	Notice switchNotice
@@ -94,8 +97,8 @@ type MemberRow struct {
 }
 
 // membersFor reads the page's data.
-func (s *Server) membersFor(ctx context.Context, g Grant) (Members, error) {
-	page := Members{Team: g.Team(), Issuer: g.Team().KeyID, Now: s.now()}
+func (s *Server) membersFor(ctx context.Context, t trans, g Grant) (Members, error) {
+	page := Members{Trans: t, Team: g.Team(), Issuer: g.Team().KeyID, Now: s.now()}
 	keys, err := s.admin.GatewayKeys(ctx)
 	if err != nil {
 		return Members{}, err
@@ -106,15 +109,15 @@ func (s *Server) membersFor(ctx context.Context, g Grant) (Members, error) {
 		}
 		switch {
 		case k.Off:
-			page.Why = "the team's gateway key is switched off, so it can't issue keys: ops can turn it back on"
+			page.Why = t.T("members.why.off")
 		case !k.Issues:
-			page.Why = "the team's gateway key isn't let issue keys: ops turns that on with `magpie gateway-key issuer " + k.ID + " on`"
+			page.Why = t.T("members.why.not_issuer", argsOf{"ID": k.ID})
 		default:
 			page.CanIssue = true
 		}
 	}
 	if !page.CanIssue && page.Why == "" {
-		page.Why = "the team's gateway key isn't in magpie now, so nothing can be issued under it"
+		page.Why = t.T("members.why.no_key")
 	}
 	issued, err := s.admin.MemberKeys(ctx, page.Issuer)
 	if err != nil {
@@ -148,21 +151,22 @@ func (s *Server) serveMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	page, err := s.membersFor(ctx, g)
+	page, err := s.membersFor(ctx, transOf(r), g)
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
 	page.Token = r.PathValue("token")
 	page.TTLs = memberTTLs
-	s.render(w, http.StatusOK, membersPage(page))
+	s.render(w, transOf(r), http.StatusOK, membersPage(page))
 }
 
 // serveIssueMember answers the form: issue a key under the team's own key,
 // and draw the page with the one answer that carries the secret.
 func (s *Server) serveIssueMember(w http.ResponseWriter, r *http.Request) {
+	t := transOf(r)
 	if !sameOrigin(r) {
-		http.Error(w, "this form is submitted from the team's own page", http.StatusForbidden)
+		http.Error(w, t.T("signin.err.origin"), http.StatusForbidden)
 		return
 	}
 	g, ok := s.issueGrant(w, r)
@@ -172,24 +176,24 @@ func (s *Server) serveIssueMember(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "the form didn't read", http.StatusBadRequest)
+		http.Error(w, t.T("signin.err.form"), http.StatusBadRequest)
 		return
 	}
 	name := strings.TrimSpace(r.PostFormValue("name"))
 	if name == "" {
-		s.renderMembers(w, r, g, http.StatusBadRequest, switchNotice{Text: "A member's key needs a name, so the list can tell it from the others.", Bad: true})
+		s.renderMembers(w, r, g, http.StatusBadRequest, switchNotice{Text: t.T("members.notice.no_name"), Bad: true})
 		return
 	}
 	ttl, ok := ttlOf(r.PostFormValue("ttl"))
 	if !ok {
-		s.renderMembers(w, r, g, http.StatusBadRequest, switchNotice{Text: "Pick one of the lifetimes the form offers.", Bad: true})
+		s.renderMembers(w, r, g, http.StatusBadRequest, switchNotice{Text: t.T("members.notice.no_ttl"), Bad: true})
 		return
 	}
 	// the issuer is the team's own, never a request's: a field naming
 	// another key is ignored. The key is asked first, so a team whose key
 	// may not issue gets this portal's words rather than magpie's.
-	if page, err := s.membersFor(ctx, g); err != nil || !page.CanIssue {
-		why := "the team's gateway key can't issue keys"
+	if page, err := s.membersFor(ctx, t, g); err != nil || !page.CanIssue {
+		why := t.T("members.notice.cant")
 		if err == nil && page.Why != "" {
 			why = page.Why
 		}
@@ -208,8 +212,9 @@ func (s *Server) serveIssueMember(w http.ResponseWriter, r *http.Request) {
 // serveRevokeMember answers the list's revoke: a key issued under this
 // team's own key, and nothing else.
 func (s *Server) serveRevokeMember(w http.ResponseWriter, r *http.Request) {
+	t := transOf(r)
 	if !sameOrigin(r) {
-		http.Error(w, "this form is submitted from the team's own page", http.StatusForbidden)
+		http.Error(w, t.T("signin.err.origin"), http.StatusForbidden)
 		return
 	}
 	g, ok := s.issueGrant(w, r)
@@ -222,10 +227,10 @@ func (s *Server) serveRevokeMember(w http.ResponseWriter, r *http.Request) {
 	err := s.admin.RevokeMemberKey(ctx, g.Team().KeyID, id)
 	s.audit(g, actKeyRevoke, "", id, err)
 	if err != nil {
-		s.renderMembers(w, r, g, http.StatusNotFound, switchNotice{Text: "That key isn't one this team issued, or it is gone already.", Bad: true})
+		s.renderMembers(w, r, g, http.StatusNotFound, switchNotice{Text: t.T("members.notice.gone"), Bad: true})
 		return
 	}
-	s.renderMembers(w, r, g, http.StatusOK, switchNotice{Text: "Revoked " + id + ". A client sending it is refused on its next request."})
+	s.renderMembers(w, r, g, http.StatusOK, switchNotice{Text: t.T("members.notice.revoked", argsOf{"ID": id})})
 }
 
 // renderMembers draws the page with a notice, reading its data again so
@@ -233,9 +238,9 @@ func (s *Server) serveRevokeMember(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderMembers(w http.ResponseWriter, r *http.Request, g Grant, status int, notice switchNotice, issued ...*MemberKey) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	page, err := s.membersFor(ctx, g)
+	page, err := s.membersFor(ctx, transOf(r), g)
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
 	page.Token = r.PathValue("token")
@@ -243,12 +248,13 @@ func (s *Server) renderMembers(w http.ResponseWriter, r *http.Request, g Grant, 
 	page.TTLs = memberTTLs
 	if len(issued) > 0 {
 		page.Issued = issued[0]
-		page.IssuedUntil = issued[0].Expires.Local().Format("2006-01-02 15:04")
+		t := transOf(r)
+		page.IssuedUntil = t.T("members.issued.until", argsOf{"At": issued[0].Expires.Local().Format("2006-01-02 15:04")})
 		if issued[0].Expires.Sub(page.Now) >= foreverAs {
-			page.IssuedUntil = "it never expires (permanent)"
+			page.IssuedUntil = t.T("members.issued.forever")
 		}
 	}
-	s.render(w, status, membersPage(page))
+	s.render(w, transOf(r), status, membersPage(page))
 }
 
 // issueGrant is the boundary for the members page's posts: the team's own
@@ -259,11 +265,11 @@ func (s *Server) issueGrant(w http.ResponseWriter, r *http.Request) (Grant, bool
 	case err == nil:
 		return g, true
 	case errors.Is(err, ErrNoTeam):
-		http.NotFound(w, r)
+		s.notFound(w, r)
 	case errors.Is(err, ErrNotYours):
-		http.Error(w, "that is not this team's", http.StatusForbidden)
+		http.Error(w, transOf(r).T("signin.err.not_yours"), http.StatusForbidden)
 	default:
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 	}
 	return Grant{}, false
 }

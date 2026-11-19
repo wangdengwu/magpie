@@ -68,6 +68,9 @@ type AccountRow struct {
 // Accounts is what the page draws: one team, its group, and the accounts
 // that group holds.
 type Accounts struct {
+	// Trans is the language the page is drawn in, which the template reads
+	// the page's sentences from.
+	Trans trans
 	Team  Team
 	Group Group
 	// Rows are the group's accounts, in use first then by name, cut to
@@ -100,13 +103,13 @@ type Accounts struct {
 // magpie is filtered here, and what it answers holds nothing of another
 // team. The grant it takes is the boundary's: there is no way to call it
 // for a group the token didn't resolve to.
-func (s *Server) AccountsFor(ctx context.Context, g Grant) (Accounts, error) {
+func (s *Server) AccountsFor(ctx context.Context, g Grant, t trans) (Accounts, error) {
 	catalog, err := s.admin.Catalog(ctx)
 	if err != nil {
 		return Accounts{}, err
 	}
 	usage, usageErr := s.admin.Usage(ctx, agentClaude)
-	page := Accounts{Team: g.Team(), Group: g.Group(), Now: time.Now()}
+	page := Accounts{Trans: t, Team: g.Team(), Group: g.Group(), Now: time.Now()}
 	entries := g.Accounts()
 	if len(entries) > maxAccountsOnPage {
 		page.More = len(entries) - maxAccountsOnPage
@@ -119,12 +122,12 @@ func (s *Server) AccountsFor(ctx context.Context, g Grant) (Accounts, error) {
 		case !known:
 			// an entry signed out since, or an id magpie no longer keeps:
 			// it stays in the group and matches nothing
-			row.Note = "no account magpie has now: it was signed out, or the group names an id magpie no longer keeps"
+			row.Note = t.T("accounts.note.lost")
 		case acct.Key:
 			row.Known, row.Key, row.Name = true, true, acct.Name
 			row.Plan = acct.Plan
 			row.ProviderName = cmp.Or(acct.ProviderName, providerOf(entry))
-			row.Note = "an API key, not a signed-in account: its spend is on the key's own balance"
+			row.Note = t.T("accounts.note.key")
 		default:
 			row.Known = true
 			row.Name, row.Plan = cmp.Or(acct.Name, acct.User), acct.Plan
@@ -136,18 +139,18 @@ func (s *Server) AccountsFor(ctx context.Context, g Grant) (Accounts, error) {
 			}
 			switch {
 			case usageErr != nil:
-				row.Note = "magpie couldn't be asked for this account's allowance"
+				row.Note = t.T("accounts.note.no_allowance")
 			default:
 				r, ok := usage[accountKey(acct.User)]
 				if !ok {
-					row.Note = "magpie has no reading of this account yet: it makes one when the account serves a request"
+					row.Note = t.T("accounts.note.no_reading")
 					break
 				}
 				row.Reading = &r
 				if r.ReadAt != nil && (page.ReadAt == nil || r.ReadAt.After(*page.ReadAt)) {
 					page.ReadAt = r.ReadAt
 				}
-				row.Note = readingNote(r)
+				row.Note = readingNote(t, r)
 			}
 		}
 		page.Rows = append(page.Rows, row)
@@ -179,14 +182,14 @@ func providerOf(entry string) string {
 
 // readingNote is what the page says under a reading, "" when there is
 // nothing to explain.
-func readingNote(r Reading) string {
+func readingNote(t trans, r Reading) string {
 	switch {
 	case r.Deferred && r.AsOf != nil:
-		return "not read this time: this is the reading from " + r.AsOf.Local().Format("15:04")
+		return t.T("reading.deferred.at", argsOf{"At": r.AsOf.Local().Format("15:04")})
 	case r.Deferred:
-		return "not read yet"
+		return t.T("reading.deferred")
 	case r.AsOf != nil:
-		return "the vendor couldn't be asked: this is the reading from " + r.AsOf.Local().Format("15:04")
+		return t.T("reading.stale", argsOf{"At": r.AsOf.Local().Format("15:04")})
 	case r.Error != "":
 		return r.Error
 	}
@@ -201,9 +204,9 @@ func (s *Server) serveAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	page, err := s.AccountsFor(ctx, g)
+	page, err := s.AccountsFor(ctx, g, transOf(r))
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
 	page.Token = r.PathValue("token")
@@ -213,7 +216,7 @@ func (s *Server) serveAccounts(w http.ResponseWriter, r *http.Request) {
 	if entry := r.URL.Query().Get("added"); entry != "" && slicesContainsFold(page.Group.Accounts, strings.ToLower(entry)) {
 		page.Added = entry
 	}
-	s.render(w, http.StatusOK, accountsPage(page))
+	s.render(w, transOf(r), http.StatusOK, accountsPage(transOf(r), page))
 }
 
 // authorizePage runs the boundary for a page request and answers the
@@ -229,25 +232,32 @@ func (s *Server) authorizePage(w http.ResponseWriter, r *http.Request) (Grant, b
 	case err == nil:
 		return g, true
 	case errors.Is(err, ErrNoTeam), errors.Is(err, ErrNoGroup):
-		http.NotFound(w, r)
+		s.notFound(w, r)
 	case errors.Is(err, ErrNotYours):
-		http.Error(w, "that is not this team's", http.StatusForbidden)
+		http.Error(w, transOf(r).T("signin.err.not_yours"), http.StatusForbidden)
 	default:
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 	}
 	return Grant{}, false
 }
 
 // pageError answers a page whose data couldn't be read. magpie's own words
 // are not shown: an error it sends can name accounts of other teams.
-func (s *Server) pageError(w http.ResponseWriter, err error) {
-	s.render(w, http.StatusServiceUnavailable, errorPage())
+func (s *Server) pageError(w http.ResponseWriter, r *http.Request, err error) {
+	t := transOf(r)
+	s.render(w, t, http.StatusServiceUnavailable, errorPage(t))
 }
 
 // render writes a page with the headers every page of the portal carries.
-func (s *Server) render(w http.ResponseWriter, status int, body string) {
+//
+// The language is here and not in every caller: it comes from the request's
+// Accept-Language, and no page says otherwise. It also sets Content-Language,
+// which is what a caching proxy and a browser's reader mode read a page's
+// language from when the markup's own lang is not enough.
+func (s *Server) render(w http.ResponseWriter, t trans, status int, body string) {
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Content-Language", t.HTML())
 	// The token is in the path, and there is nothing here for a script to
 	// do: no page loads anything from another origin, runs script of its
 	// own, or may be framed. A frame is one way a page's URL is read.
@@ -268,7 +278,7 @@ type windowRow struct {
 
 // windows turns a reading into the rows the page shows: the vendor's
 // windows in its own order, each with its share and when it starts again.
-func windows(r *Reading, now time.Time) []windowRow {
+func windows(t trans, r *Reading, now time.Time) []windowRow {
 	if r == nil {
 		return nil
 	}
@@ -277,7 +287,7 @@ func windows(r *Reading, now time.Time) []windowRow {
 		row := windowRow{Name: w.Name, Share: w.Used, Display: w.Display, Text: w.Text || w.Lane != "" || w.Unlimited}
 		if w.ResetsAt != nil {
 			row.Resets = w.ResetsAt.Local().Format("01-02 15:04")
-			row.ResetsIn = until(now, *w.ResetsAt)
+			row.ResetsIn = until(t, now, *w.ResetsAt)
 		}
 		out = append(out, row)
 	}
@@ -303,20 +313,20 @@ func (w windowRow) ShareInt() int {
 }
 
 // until is how long from now to at, in the page's words: "2h 10m", "3d".
-func until(now, at time.Time) string {
+func until(t trans, now, at time.Time) string {
 	d := at.Sub(now)
 	if d <= 0 {
-		return "now"
+		return t.T("time.now")
 	}
 	switch {
 	case d < time.Minute:
-		return "under a minute"
+		return t.T("time.under_minute")
 	case d < time.Hour:
-		return itoa(int(d.Minutes())) + "m"
+		return t.T("time.minutes", argsOf{"N": int(d.Minutes())})
 	case d < 24*time.Hour:
-		return itoa(int(d.Hours())) + "h " + itoa(int(d.Minutes())%60) + "m"
+		return t.T("time.hours", argsOf{"H": int(d.Hours()), "M": int(d.Minutes()) % 60})
 	default:
-		return itoa(int(d.Hours())/24) + "d " + itoa(int(d.Hours())%24) + "h"
+		return t.T("time.days", argsOf{"D": int(d.Hours()) / 24, "H": int(d.Hours()) % 24})
 	}
 }
 
@@ -335,45 +345,48 @@ func itoa(n int) string {
 }
 
 // ago is when something was read, in the page's words.
-func ago(now, at time.Time) string {
+func ago(t trans, now, at time.Time) string {
 	d := now.Sub(at)
 	switch {
-	case d < 0:
-		return "just now"
-	case d < time.Minute:
-		return "just now"
+	case d < 0, d < time.Minute:
+		return t.T("ago.just_now")
 	case d < time.Hour:
-		return itoa(int(d.Minutes())) + "m ago"
+		return t.T("ago.minutes", argsOf{"N": int(d.Minutes())})
 	case d < 24*time.Hour:
-		return itoa(int(d.Hours())) + "h ago"
+		return t.T("ago.hours", argsOf{"N": int(d.Hours())})
 	default:
-		return itoa(int(d.Hours())/24) + "d ago"
+		return t.T("ago.days", argsOf{"N": int(d.Hours()) / 24})
 	}
 }
 
 // errorPage is what a page says when magpie couldn't be read: enough to
 // tell ops what to look at, and nothing magpie said itself.
-func errorPage() string {
-	return render(template.Must(template.New("error").Parse(errorHTML)), nil)
+func errorPage(t trans) string {
+	return render(template.Must(template.New("error").Funcs(t.funcs()).Parse(errorHTML)), errorView{Trans: t})
 }
 
-// pageFuncs are what the templates use besides their values.
-var pageFuncs = template.FuncMap{
-	"ago":     ago,
-	"until":   until,
-	"windows": windows,
-	"plural":  plural,
+// errorView is the error page's data: the language, and nothing else.
+type errorView struct{ Trans trans }
+
+// notFound answers a link that names no team this portal serves.
+func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
+	t := transOf(r)
+	s.render(w, t, http.StatusNotFound, render(template.Must(template.New("notfound").Funcs(t.funcs()).Parse(notFoundHTML)), errorView{Trans: t}))
 }
 
-func accountsPage(p Accounts) string {
-	return render(template.Must(template.New("accounts").Funcs(pageFuncs).Parse(accountsHTML)), p)
+// pageFuncs are what the templates use besides their values, and the
+// language they say their words in.
+func pageFuncs(t trans) template.FuncMap {
+	funcs := t.funcs()
+	funcs["windows"] = func(r *Reading, now time.Time) []windowRow { return windows(t, r, now) }
+	funcs["ago"] = func(now, at time.Time) string { return ago(t, now, at) }
+	funcs["until"] = func(now, at time.Time) string { return until(t, now, at) }
+	return funcs
 }
 
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
+func accountsPage(t trans, p Accounts) string {
+	p.Trans = t
+	return render(template.Must(template.New("accounts").Funcs(pageFuncs(t)).Parse(accountsHTML)), p)
 }
 
 // render runs a template into a string. The templates are parsed here,

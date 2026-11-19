@@ -98,7 +98,7 @@ func TestSwitchItselfRefusesAGrantOfAnotherGroup(t *testing.T) {
 	f := newFixture(t)
 	g := mustGrant(t, f, f.tokenA)
 	for _, entry := range []string{acctB1, acctB1 + "x", "claude/ffffffffffffffff", "", "carol@example.com"} {
-		if err := f.srv.Switch(t.Context(), g, entry, false); !errors.Is(err, ErrNoAccount) {
+		if err := f.srv.Switch(t.Context(), transFor(langEN), g, entry, false); !errors.Is(err, ErrNoAccount) {
 			t.Errorf("Switch(%q) answered %v, want ErrNoAccount", entry, err)
 		}
 	}

@@ -159,7 +159,7 @@ func (s *Server) StartSignIn(ctx context.Context, g Grant) (SignIn, error) {
 		return SignIn{}, err
 	}
 	if st.ID == "" {
-		return SignIn{}, errors.New("magpie answered no sign-in id")
+		return SignIn{}, errNoSignInID
 	}
 	s.signIns.start(st.ID, g.Team().ID, s.now())
 	return st.signIn(), nil
@@ -191,7 +191,7 @@ func (s *Server) SubmitCallback(ctx context.Context, g Grant, id, raw string) (S
 	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return SignIn{}, "", errors.New("paste the address the browser ended on, or the code the page shows")
+		return SignIn{}, "", errPaste
 	}
 	if err := s.admin.post(ctx, "signin/"+url.PathEscape(id)+"/callback", map[string]string{"URL": raw}, nil); err != nil {
 		return SignIn{}, "", err
@@ -236,7 +236,7 @@ func (s *Server) CancelSignIn(ctx context.Context, g Grant, id string) error {
 func (s *Server) entryOf(ctx context.Context, user string) (string, error) {
 	user = strings.TrimSpace(user)
 	if user == "" {
-		return "", errors.New("magpie's sign-in finished without saying which account it signed in")
+		return "", errNoUser
 	}
 	var last error
 	for attempt := range 10 {
@@ -261,7 +261,7 @@ func (s *Server) entryOf(ctx context.Context, user string) (string, error) {
 	if last != nil {
 		return "", last
 	}
-	return "", errors.New("magpie signed " + user + " in, but lists no account of it yet: check again in a moment")
+	return "", &pageErr{key: "signin.err.no_account", args: argsOf{"User": user}}
 }
 
 // addToGroup writes the account into the team's group, as magpie has the
@@ -274,7 +274,7 @@ func (s *Server) entryOf(ctx context.Context, user string) (string, error) {
 func (s *Server) addToGroup(ctx context.Context, g Grant, entry string) error {
 	entry = strings.ToLower(strings.TrimSpace(entry))
 	if _, ok := cleanAccount(entry); !ok {
-		return errors.New("magpie signed the account in, but this portal can't name it in a group")
+		return errNoGroupName
 	}
 	s.groupMu.Lock()
 	defer s.groupMu.Unlock()
@@ -294,7 +294,7 @@ func (s *Server) addToGroup(ctx context.Context, g Grant, entry string) error {
 		Groups []Group `json:"groups"`
 	}
 	if err := s.admin.post(ctx, "account-groups/save", group, &out); err != nil {
-		return errors.New("magpie signed the account in, but the team's group didn't take it: " + oneLine(err.Error()))
+		return &pageErr{key: "signin.err.save", why: oneLine(err.Error())}
 	}
 	return nil
 }
@@ -349,7 +349,7 @@ func (s *Server) serveAddPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.render(w, http.StatusOK, addPage(g, r.PathValue("token"), addNotice{}))
+	s.render(w, transOf(r), http.StatusOK, addPage(transOf(r), g, r.PathValue("token"), addNotice{}))
 }
 
 // serveAddStart starts a sign-in and sends the browser to its page.
@@ -359,7 +359,7 @@ func (s *Server) serveAddStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !sameOrigin(r) {
-		http.Error(w, "this form is submitted from the team's own page", http.StatusForbidden)
+		http.Error(w, transOf(r).T("signin.err.origin"), http.StatusForbidden)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -368,7 +368,8 @@ func (s *Server) serveAddStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// the sign-in's own page has nothing to show yet: the pool's page it
 		// came from says what went wrong
-		s.render(w, http.StatusBadGateway, addPage(g, r.PathValue("token"), addNotice{Text: "magpie couldn't start the sign-in: " + err.Error(), Bad: true}))
+		t := transOf(r)
+		s.render(w, t, http.StatusBadGateway, addPage(t, g, r.PathValue("token"), addNotice{Text: t.T("add.notice.start_failed", argsOf{"Why": err.Error()}), Bad: true}))
 		return
 	}
 	http.Redirect(w, r, "/team/"+r.PathValue("token")+"/signin/"+url.PathEscape(st.ID), http.StatusSeeOther)
@@ -385,14 +386,14 @@ func (s *Server) serveSignInPage(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	st, err := s.SignInOf(ctx, g, r.PathValue("id"))
 	if errors.Is(err, ErrNoSignIn) {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
-	s.render(w, http.StatusOK, signInPage(g, r.PathValue("token"), st, addNotice{}))
+	s.render(w, transOf(r), http.StatusOK, signInPage(transOf(r), g, r.PathValue("token"), st, addNotice{}))
 }
 
 // serveSignInCallback takes the pasted address, and sends the browser back to
@@ -403,28 +404,30 @@ func (s *Server) serveSignInCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !sameOrigin(r) {
-		http.Error(w, "this form is submitted from the team's own page", http.StatusForbidden)
+		http.Error(w, transOf(r).T("signin.err.origin"), http.StatusForbidden)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "the form didn't read", http.StatusBadRequest)
+		http.Error(w, transOf(r).T("signin.err.form"), http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
 	st, entry, err := s.SubmitCallback(ctx, g, r.PathValue("id"), r.PostFormValue("url"))
 	if errors.Is(err, ErrNoSignIn) {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err != nil {
 		// magpie's own words for a bad paste are the right ones: they say
 		// which address it wanted. The paste itself is never echoed back.
-		s.render(w, http.StatusBadRequest, signInPage(g, r.PathValue("token"), st, addNotice{Text: err.Error(), Bad: true}))
+		t := transOf(r)
+		s.render(w, t, http.StatusBadRequest, signInPage(t, g, r.PathValue("token"), st, addNotice{Text: said(t, err), Bad: true}))
 		return
 	}
 	if !st.Done() {
-		s.render(w, http.StatusOK, signInPage(g, r.PathValue("token"), st, addNotice{Text: "magpie hasn't finished with that yet: check again in a moment.", Bad: true}))
+		t := transOf(r)
+		s.render(w, t, http.StatusOK, signInPage(t, g, r.PathValue("token"), st, addNotice{Text: t.T("add.notice.not_done"), Bad: true}))
 		return
 	}
 	http.Redirect(w, r, "/team/"+r.PathValue("token")+"?added="+url.QueryEscape(entry), http.StatusSeeOther)
@@ -437,7 +440,7 @@ func (s *Server) serveSignInCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !sameOrigin(r) {
-		http.Error(w, "this form is submitted from the team's own page", http.StatusForbidden)
+		http.Error(w, transOf(r).T("signin.err.origin"), http.StatusForbidden)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
@@ -446,11 +449,11 @@ func (s *Server) serveSignInCancel(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, ErrNoSignIn) {
 		// the same answer a sign-in that doesn't exist gets: a team learns
 		// nothing of another's, and a cancel that changed nothing says so
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/team/"+r.PathValue("token"), http.StatusSeeOther)

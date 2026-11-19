@@ -31,6 +31,7 @@ type AuditRow struct {
 
 // AuditView is the page's data.
 type AuditView struct {
+	Trans trans
 	Team  Team
 	Token string
 	// Rows are the team's lines, oldest first, and Total how many there
@@ -41,38 +42,39 @@ type AuditView struct {
 }
 
 // verbOf is an audit action in the page's words. An action this build
-// doesn't know is said as it is: a line from a newer teamd is still a line.
-func verbOf(action string) string {
+// doesn't know is said as it is: a line from a newer teamd is still a line,
+// in either language.
+func verbOf(t trans, action string) string {
 	switch action {
 	case actAdd:
-		return "added an account"
+		return t.T("audit.verb.add")
 	case actOff:
-		return "disabled an account"
+		return t.T("audit.verb.off")
 	case actOn:
-		return "enabled an account"
+		return t.T("audit.verb.on")
 	case actCancel:
-		return "cancelled a sign-in"
+		return t.T("audit.verb.cancel")
 	case actTeamAdd:
-		return "ops recorded this team"
+		return t.T("audit.verb.team-add")
 	case actTeamToken:
-		return "ops issued this team's link"
+		return t.T("audit.verb.team-token")
 	case actTeamRemove:
-		return "ops forgot this team"
+		return t.T("audit.verb.team-rm")
 	case actKeyIssue:
-		return "issued a member key"
+		return t.T("audit.verb.key-issue")
 	case actKeyRevoke:
-		return "revoked a member key"
+		return t.T("audit.verb.key-revoke")
 	}
 	return action
 }
 
 // whoOf is who an entry names, in the page's words.
-func whoOf(e Entry) string {
+func whoOf(t trans, e Entry) string {
 	if e.Who == OpsWho {
-		return "ops"
+		return t.T("audit.who.ops")
 	}
 	if e.Who == e.Team || e.Who == "" {
-		return "this team's link"
+		return t.T("audit.who.link")
 	}
 	return e.Who
 }
@@ -80,20 +82,20 @@ func whoOf(e Entry) string {
 // AuditViewFor is a team's own lines as the page shows them, through its
 // grant: a page can not ask for another team's, and there is no route that
 // takes a team id.
-func (s *Server) AuditViewFor(g Grant) (AuditView, error) {
+func (s *Server) AuditViewFor(g Grant, t trans) (AuditView, error) {
 	lines, err := s.LinesFor(g)
 	if err != nil {
 		return AuditView{}, err
 	}
-	page := AuditView{Team: g.Team(), Total: lines.Total, Now: s.now()}
+	page := AuditView{Trans: t, Team: g.Team(), Total: lines.Total, Now: s.now()}
 	for _, e := range lines.Entries {
 		page.Rows = append(page.Rows, AuditRow{
 			At:      e.At,
 			Action:  e.Action,
-			Verb:    verbOf(e.Action),
+			Verb:    verbOf(t, e.Action),
 			Account: e.Account,
 			Name:    e.Name,
-			Who:     whoOf(e),
+			Who:     whoOf(t, e),
 			Refused: e.Result == ResultDenied,
 		})
 	}
@@ -111,11 +113,11 @@ func (s *Server) serveAudit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	page, err := s.AuditViewFor(g)
+	page, err := s.AuditViewFor(g, transOf(r))
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
 	page.Token = r.PathValue("token")
-	s.render(w, http.StatusOK, auditPage(page))
+	s.render(w, transOf(r), http.StatusOK, auditPage(page))
 }

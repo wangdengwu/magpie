@@ -56,7 +56,7 @@ func NotSwitchable(err error) (string, bool) {
 // errLostEntry is an entry the team's group holds that names no account
 // magpie has: signed out since, or an id magpie no longer keeps. It is the
 // team's own entry, so saying so tells the lead nothing of another team.
-var errLostEntry = notSwitchable{"Magpie has no account by that id any more — it was signed out, or magpie no longer keeps it. There is nothing to switch; ops can take the entry out of the group."}
+func errLostEntry(t trans) notSwitchable { return notSwitchable{t.T("switch.lost_entry")} }
 
 // Switch changes whether magpie serves from one of the team's accounts.
 //
@@ -71,8 +71,8 @@ var errLostEntry = notSwitchable{"Magpie has no account by that id any more — 
 // What is left is magpie's own account list: an entry the group holds that
 // names no account, and a key with no sign-in, have nothing to switch.
 // What the switch did is read back afterwards (accountNow), not assumed.
-func (s *Server) Switch(ctx context.Context, g Grant, entry string, on bool) error {
-	err := s.switchAccount(ctx, g, entry, on)
+func (s *Server) Switch(ctx context.Context, t trans, g Grant, entry string, on bool) error {
+	err := s.switchAccount(ctx, t, g, entry, on)
 	// the name is read only when the switch went through: a refusal's line
 	// is worth writing whether or not magpie answers, and the name is
 	// magpie's
@@ -95,7 +95,7 @@ func switchAction(on bool) string {
 // switchAccount is Switch without the audit line, so the line is written
 // whatever the outcome — including a refusal, which is the line a lead
 // most needs when a key was used by something that shouldn't have it.
-func (s *Server) switchAccount(ctx context.Context, g Grant, entry string, on bool) error {
+func (s *Server) switchAccount(ctx context.Context, t trans, g Grant, entry string, on bool) error {
 	entry = strings.ToLower(strings.TrimSpace(entry))
 	if want, ok := cleanAccount(entry); !ok || want != entry {
 		return ErrNoAccount
@@ -117,13 +117,13 @@ func (s *Server) switchAccount(ctx context.Context, g Grant, entry string, on bo
 		// own page says so, so a post that asks anyway is answered rather
 		// than refused as another team's: the entry is this team's, and it
 		// says nothing about any other.
-		return errLostEntry
+		return errLostEntry(t)
 	}
 	if acct.Key {
-		return notSwitchable{"This is one of Claude's API keys: it has no sign-in of its own to switch, and is used for as long as it is in the team's pool."}
+		return notSwitchable{t.T("switch.why.keylist")}
 	}
 	if !acct.SignedIn || acct.Agent == "" || acct.User == "" {
-		return notSwitchable{"Magpie lists no sign-in of this account, so there is nothing to switch. Ops can say why it has none."}
+		return notSwitchable{t.T("switch.why.no_signin_long")}
 	}
 	return s.loginOn(ctx, acct.Agent, acct.User, on)
 }
@@ -167,8 +167,9 @@ type switchNotice struct {
 // draw the pool again from magpie.
 func (s *Server) serveSwitch(on bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		t := transOf(r)
 		if !sameOrigin(r) {
-			http.Error(w, "this form is submitted from the team's own page", http.StatusForbidden)
+			http.Error(w, t.T("signin.err.origin"), http.StatusForbidden)
 			return
 		}
 		g, ok := s.switchGrant(w, r, on)
@@ -178,13 +179,13 @@ func (s *Server) serveSwitch(on bool) http.HandlerFunc {
 		entry := strings.ToLower(strings.TrimSpace(r.PostFormValue("account")))
 		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
-		err := s.Switch(ctx, g, entry, on)
+		err := s.Switch(ctx, t, g, entry, on)
 		if err != nil {
 			// magpie's own refusal where it gave one, and this portal's
 			// words where the objection is its own. Nothing magpie says
 			// reaches a page unfiltered: its errors can name another team's
 			// accounts (switchFailed, pageError).
-			s.doneWith(w, r, switchFailed(err, on))
+			s.doneWith(w, r, switchFailed(t, err, on))
 			return
 		}
 		// magpie took it. What the page says of it is read from magpie, not
@@ -192,36 +193,37 @@ func (s *Server) serveSwitch(on bool) http.HandlerFunc {
 		// still serve nothing from it.
 		acct, err := s.accountNow(ctx, entry)
 		if err != nil {
-			s.doneWith(w, r, "magpie took the change, and couldn't be read back to say how it stands.")
+			s.doneWith(w, r, t.T("switch.done.unreadable"))
 			return
 		}
 		name := acct.Name
 		if name == "" {
 			name = entry
 		}
+		why := argsOf{"Name": name, "Why": whyNotServing(t, acct)}
 		switch {
 		case on && acct.On:
-			s.doneWith(w, r, name+" is in the team's pool again.")
+			s.doneWith(w, r, t.T("switch.done.on", argsOf{"Name": name}))
 		case on:
-			s.doneWith(w, r, name+" is switched on, and magpie isn't serving from it yet: "+whyNotServing(acct))
+			s.doneWith(w, r, t.T("switch.done.not_serving", why))
 		case acct.Off:
-			s.doneWith(w, r, name+" is disabled: the team's requests won't use it until it is switched back on.")
+			s.doneWith(w, r, t.T("switch.done.off", argsOf{"Name": name}))
 		default:
-			s.doneWith(w, r, name+" is still in use: "+whyNotServing(acct))
+			s.doneWith(w, r, t.T("switch.done.still", why))
 		}
 	}
 }
 
 // whyNotServing says why an account magpie has is not serving, in the
 // page's words.
-func whyNotServing(acct Account) string {
+func whyNotServing(t trans, acct Account) string {
 	switch {
 	case acct.Paused:
-		return "it is the account its agent is signed in to, paused while another of the team's accounts is on"
+		return t.T("switch.why.not_serving.paused")
 	case acct.On:
-		return "magpie serves from it"
+		return t.T("switch.why.not_serving.serving")
 	default:
-		return "magpie lists no sign-in of it that can be switched"
+		return t.T("switch.why.not_serving")
 	}
 }
 
@@ -233,18 +235,20 @@ func whyNotServing(acct Account) string {
 // A failure that isn't magpie refusing the change says only that. Its
 // words are not repeated: an error from a read can name another team's
 // accounts, and a page is not where those go.
-func switchFailed(err error, on bool) string {
+func switchFailed(t trans, err error, on bool) string {
 	if why, ok := NotSwitchable(err); ok {
 		return why
 	}
 	var said *MagpieError
 	if errors.As(err, &said) && said.Message != "" {
+		// magpie's own words, which say what a lead can act on. The
+		// sentence around them is the portal's, and is translated.
 		if on {
-			return "magpie didn't switch it on: " + said.Message
+			return t.T("switch.failed.on", argsOf{"Why": said.Message})
 		}
-		return "magpie didn't disable it: " + said.Message
+		return t.T("switch.failed.off", argsOf{"Why": said.Message})
 	}
-	return "magpie couldn't be reached, so nothing was changed."
+	return t.T("switch.failed.unreachable")
 }
 
 // switchGrant is the boundary for a switch's post. The account is the
@@ -252,7 +256,7 @@ func switchFailed(err error, on bool) string {
 // magpie is asked for anything but the group the token resolves to.
 func (s *Server) switchGrant(w http.ResponseWriter, r *http.Request, on bool) (Grant, bool) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "the form didn't read", http.StatusBadRequest)
+		http.Error(w, transOf(r).T("signin.err.form"), http.StatusBadRequest)
 		return Grant{}, false
 	}
 	entry := strings.ToLower(strings.TrimSpace(r.PostFormValue("account")))
@@ -261,7 +265,7 @@ func (s *Server) switchGrant(w http.ResponseWriter, r *http.Request, on bool) (G
 	// account at all (a page that only lists the team), and a blank field
 	// is not that.
 	if want, ok := cleanAccount(entry); !ok || want != entry {
-		http.Error(w, "that is not this team's", http.StatusForbidden)
+		http.Error(w, transOf(r).T("signin.err.not_yours"), http.StatusForbidden)
 		return Grant{}, false
 	}
 	g, err := s.Authorize(r.Context(), r.PathValue("token"), Target{Account: entry})
@@ -269,7 +273,7 @@ func (s *Server) switchGrant(w http.ResponseWriter, r *http.Request, on bool) (G
 	case err == nil:
 		return g, true
 	case errors.Is(err, ErrNoTeam), errors.Is(err, ErrNoGroup):
-		http.NotFound(w, r)
+		s.notFound(w, r)
 	case errors.Is(err, ErrNotYours), errors.Is(err, ErrNoAccount):
 		// an account of another team's, one ops took out of this group since
 		// the page was drawn, and a name no group could hold all get the
@@ -279,9 +283,9 @@ func (s *Server) switchGrant(w http.ResponseWriter, r *http.Request, on bool) (G
 		// account that isn't its own is the record a lead needs when a key
 		// has got out.
 		s.auditRefused(r.PathValue("token"), switchAction(on), entry, err)
-		http.Error(w, "that is not this team's", http.StatusForbidden)
+		http.Error(w, transOf(r).T("signin.err.not_yours"), http.StatusForbidden)
 	default:
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 	}
 	return Grant{}, false
 }
@@ -298,17 +302,17 @@ func (s *Server) doneWith(w http.ResponseWriter, r *http.Request, text string) {
 	defer cancel()
 	g, err := s.Authorize(ctx, r.PathValue("token"), Target{})
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
-	page, err := s.AccountsFor(ctx, g)
+	page, err := s.AccountsFor(ctx, g, transOf(r))
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
 	page.Token = r.PathValue("token")
 	page.Notice = switchNotice{Text: text}
-	s.render(w, http.StatusOK, accountsPage(page))
+	s.render(w, transOf(r), http.StatusOK, accountsPage(transOf(r), page))
 }
 
 // switchForm is what the pool's page needs to draw one account's control:
@@ -329,16 +333,16 @@ func (row AccountRow) switchable() bool {
 // "" when it does or when the row's own note has said it. An account magpie
 // has no sign-in of can't be switched, and neither can a key: there is
 // nothing for the switch to act on.
-func (row AccountRow) WhyNot() string {
+func (row AccountRow) WhyNot(t trans) string {
 	switch {
 	case !row.Known:
 		// the row's note already says magpie has no account by this id, and
 		// saying it twice reads as two faults
 		return ""
 	case row.Key:
-		return "An API key has no sign-in to switch: it is used for as long as it is in the group."
+		return t.T("switch.why.key")
 	case !row.SignedIn:
-		return "Magpie lists no sign-in of this account, so there is nothing to switch."
+		return t.T("switch.why.no_signin")
 	}
 	return ""
 }
@@ -346,14 +350,14 @@ func (row AccountRow) WhyNot() string {
 // Switch is the control one account's row carries: Disable for an account
 // in use, Enable for one that isn't. An account that can't be switched has
 // none — whether or not WhyNot has something to say about it.
-func (row AccountRow) Switch() *switchForm {
+func (row AccountRow) Switch(t trans) *switchForm {
 	if !row.switchable() {
 		return nil
 	}
 	if row.On {
-		return &switchForm{Action: "off", Label: "Disable"}
+		return &switchForm{Action: "off", Label: t.T("switch.off")}
 	}
-	return &switchForm{Action: "on", Label: "Enable"}
+	return &switchForm{Action: "on", Label: t.T("switch.on")}
 }
 
 // Warning is what the page says beside the control before it is pressed, ""
@@ -363,9 +367,9 @@ func (row AccountRow) Switch() *switchForm {
 // so a confirm dialog would need one, and a pool of one is a pool a lead may
 // well mean to empty — the warning says what happens, and does not stand in
 // the way.
-func (row AccountRow) Warning() string {
+func (row AccountRow) Warning(t trans) string {
 	if !row.On || row.Others > 0 {
 		return ""
 	}
-	return "The only account the team has in use. Disabling it leaves the team with nothing to serve its requests until an account is switched back on."
+	return t.T("switch.warn.last")
 }

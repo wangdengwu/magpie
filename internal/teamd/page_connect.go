@@ -7,15 +7,23 @@ import "html/template"
 // mounted it — and nothing else of anyone's.
 
 func connectPage(c Connect) string {
-	return render(template.Must(template.New("connect").Funcs(connectFuncs).Parse(connectHTML)), c)
+	return render(template.Must(template.New("connect").Funcs(connectFuncs(c.Trans)).Parse(connectHTML)), c)
 }
 
-// connectFuncs are what the page's template uses besides its values.
-var connectFuncs = template.FuncMap{
-	"env":      snippetEnv,
-	"json":     snippetJSON,
-	"check":    snippetCheck,
-	"expected": expectedAnswer,
-	"model":    checkModel,
-	"plural":   plural,
+// connectFuncs are what the page's template uses besides its values, and
+// the language it says its words in.
+func connectFuncs(t trans) template.FuncMap {
+	funcs := pageFuncs(t)
+	funcs["env"] = snippetEnv
+	funcs["json"] = snippetJSON
+	funcs["check"] = snippetCheck
+	funcs["expected"] = expectedAnswer
+	funcs["model"] = checkModel
+	funcs["modelsMore"] = func(t trans, partial bool) string {
+		if !partial {
+			return ""
+		}
+		return t.T("connect.models.more")
+	}
+	return funcs
 }

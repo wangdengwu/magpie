@@ -112,6 +112,8 @@ type Usage struct {
 	// they were. The key's budget is still shown: one failing read does not
 	// hide the other.
 	AccountsErr string
+	// Trans is the language the page is drawn in.
+	Trans trans
 	// Members are the keys the team issued, and what each spent over the
 	// three periods; MemberErr is why they couldn't be read, "" when they
 	// were. A failed read is said, never drawn as zeros.
@@ -120,10 +122,7 @@ type Usage struct {
 	// MemberPeriods are the three columns, which the page draws from here
 	// rather than naming them in its markup: the periods and their words
 	// are one list.
-	MemberPeriods []struct {
-		Period string
-		Head   string
-	}
+	MemberPeriods []memberPeriod
 }
 
 // MemberUse is one member key's spend: the three periods the page shows side
@@ -156,15 +155,18 @@ func (s SpendTotals) Tokens() int { return s.Input + s.Output }
 // Used says the key did anything at all in the period.
 func (s SpendTotals) Used() bool { return s.Calls > 0 || s.Tokens() > 0 }
 
-// memberPeriods are the three windows the page shows, and the word each
-// column's head uses.
-var memberPeriods = []struct {
+// memberPeriod is one of the three windows the page shows: magpie's period,
+// and the word key its column's head is said with.
+type memberPeriod struct {
 	Period string
-	Head   string
-}{
-	{"today", "Today"},
-	{"7d", "Last 7 days"},
-	{"30d", "Last 30 days"},
+	Key    string
+}
+
+// memberPeriods are the three, in the order the page draws them.
+var memberPeriods = []memberPeriod{
+	{"today", "usage.member.today"},
+	{"7d", "usage.member.week"},
+	{"30d", "usage.member.month"},
 }
 
 // UsageFor is the page's data, from the team's own grant.
@@ -172,8 +174,8 @@ var memberPeriods = []struct {
 // Only this team's accounts are read out of magpie's answers: the readings
 // are magpie's for every account of the agent, and what reaches the page is
 // the group's, joined as the pool page joins them.
-func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
-	page := Usage{Team: g.Team(), Group: g.Group(), Now: s.now()}
+func (s *Server) UsageFor(ctx context.Context, g Grant, t trans) (Usage, error) {
+	page := Usage{Trans: t, Team: g.Team(), Group: g.Group(), Now: s.now()}
 	keys, err := s.admin.GatewayKeys(ctx)
 	if err != nil {
 		return Usage{}, err
@@ -186,7 +188,7 @@ func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
 		}
 	}
 	if page.Key == nil {
-		page.KeyErr = "magpie has no gateway key " + g.Team().KeyID + " any more"
+		page.KeyErr = t.T("usage.err.key", argsOf{"ID": g.Team().KeyID})
 	} else {
 		uses := page.Key.Uses()
 		for i, l := range page.Key.Limits() {
@@ -215,7 +217,7 @@ func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
 	if usageErr != nil {
 		// the accounts are still listed: which ones the team has is a
 		// different question from what they have spent
-		page.AccountsErr = "magpie couldn't be asked what the accounts have used"
+		page.AccountsErr = t.T("usage.err.accounts")
 	}
 	for _, entry := range g.Accounts() {
 		row := UsageAccount{Entry: entry}
@@ -223,11 +225,11 @@ func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
 		switch {
 		case !known:
 			row.Lost = true
-			row.Note = "magpie has no account by this id now: there is nothing it could have spent"
+			row.Note = t.T("usage.note.lost")
 		case acct.Key:
 			row.Key = true
 			row.Name, row.Plan = acct.Name, acct.Plan
-			row.Note = "an API key, not a signed-in account: its spend is on the key's own balance, which magpie doesn't read here"
+			row.Note = t.T("usage.note.key")
 		default:
 			row.Name, row.Plan = cmp.Or(acct.Name, acct.User), acct.Plan
 			row.On = acct.On
@@ -237,7 +239,7 @@ func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
 			default:
 				r, ok := usage[accountKey(acct.User)]
 				if !ok {
-					row.Note = "magpie has no reading of this account yet: it makes one when the account serves a request"
+					row.Note = t.T("usage.note.no_reading")
 					break
 				}
 				row.Reading = &r
@@ -245,9 +247,9 @@ func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
 				if r.ReadAt != nil && (page.UsageReadAt == nil || r.ReadAt.After(*page.UsageReadAt)) {
 					page.UsageReadAt = r.ReadAt
 				}
-				row.Note = readingNote(r)
+				row.Note = readingNote(t, r)
 				if !row.On {
-					row.Note = cmp.Or(row.Note, "magpie isn't serving from this account now, so its reading isn't moving")
+					row.Note = cmp.Or(row.Note, t.T("usage.note.not_serving"))
 				}
 			}
 		}
@@ -266,7 +268,7 @@ func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
 		}
 		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 	})
-	page.Members, page.MemberErr = s.memberUsage(ctx, g)
+	page.Members, page.MemberErr = s.memberUsage(ctx, t, g)
 	return page, nil
 }
 
@@ -281,10 +283,10 @@ func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
 // One period failing does not blank the others: each column says it couldn't
 // be read, and the block says which. A read that fails is unknown, never
 // zero.
-func (s *Server) memberUsage(ctx context.Context, g Grant) ([]MemberUse, string) {
+func (s *Server) memberUsage(ctx context.Context, t trans, g Grant) ([]MemberUse, string) {
 	issued, err := s.admin.MemberKeys(ctx, g.Team().KeyID)
 	if err != nil {
-		return nil, "magpie couldn't be asked which keys this team issued"
+		return nil, t.T("usage.member.keys_err")
 	}
 	if len(issued) == 0 {
 		return nil, ""
@@ -318,9 +320,9 @@ func (s *Server) memberUsage(ctx context.Context, g Grant) ([]MemberUse, string)
 		a := answers[i]
 		if a.err != nil {
 			if failed == "" {
-				failed = p.Head
+				failed = t.T(p.Key)
 			} else {
-				failed += ", " + p.Head
+				failed += ", " + t.T(p.Key)
 			}
 			continue
 		}
@@ -371,7 +373,7 @@ func (s *Server) memberUsage(ctx context.Context, g Grant) ([]MemberUse, string)
 	})
 	why := ""
 	if failed != "" {
-		why = "magpie couldn't be asked what the member keys used over " + failed
+		why = t.T("usage.member.err", argsOf{"Periods": failed})
 	}
 	return out, why
 }
@@ -395,34 +397,28 @@ func narrowest(r Reading) (share float64, none bool) {
 
 // PeriodWords is a limit's window in the page's words: "per day", "every 5
 // hours", "10 days of account".
-func (l UsageLimit) PeriodWords() string {
+func (l UsageLimit) PeriodWords(t trans) string {
 	switch l.Period {
 	case "days":
-		if l.Days == 1 {
-			return "every 1 day"
-		}
-		return "every " + itoa(l.Days) + " days"
+		return t.T("usage.period.days", argsOf{"N": l.Days})
 	case "hours":
-		if l.Hours == 1 {
-			return "every 1 hour"
-		}
-		return "every " + itoa(l.Hours) + " hours"
+		return t.T("usage.period.hours", argsOf{"N": l.Hours})
 	case "day":
-		return "per day"
+		return t.T("usage.period.day")
 	case "week":
-		return "per week"
+		return t.T("usage.period.week")
 	case "month":
-		return "per month"
+		return t.T("usage.period.month")
 	case "total":
-		return "in total"
+		return t.T("usage.period.total")
 	case "account":
 		if l.Account != "" && l.Window != "" {
-			return l.Window + " of " + l.Account
+			return t.T("usage.period.account", argsOf{"Window": l.Window, "Account": l.Account})
 		}
-		return "an account's window"
+		return t.T("usage.period.an_account")
 	}
 	if l.Period == "" {
-		return "a window magpie didn't name"
+		return t.T("usage.period.unnamed")
 	}
 	return l.Period
 }
@@ -454,11 +450,11 @@ func shareInt(used, limit float64) int {
 
 // Resets is when the limit starts again, in the page's words, and Empty
 // says the key is refused until then.
-func (l UsageLimit) Resets(now time.Time) string {
+func (l UsageLimit) Resets(t trans, now time.Time) string {
 	if l.ResetUnknown || l.Reset.IsZero() {
-		return "magpie can't say when this one starts again: it follows an account's window, which hasn't been read"
+		return t.T("usage.reset_unknown")
 	}
-	return l.Reset.Local().Format("01-02 15:04") + " · " + until(now, l.Reset)
+	return l.Reset.Local().Format("01-02 15:04") + " · " + until(t, now, l.Reset)
 }
 
 // serveUsage answers GET /team/{token}/usage.
@@ -469,13 +465,14 @@ func (s *Server) serveUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	page, err := s.UsageFor(ctx, g)
+	t := transOf(r)
+	page, err := s.UsageFor(ctx, g, t)
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
 	page.Token = r.PathValue("token")
-	s.render(w, http.StatusOK, usagePage(page))
+	s.render(w, t, http.StatusOK, usagePage(page))
 }
 
 // usageRoutes are the usage page's routes: the page a lead reads, and the
@@ -495,7 +492,8 @@ func (s *Server) serveUsageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	page, err := s.UsageFor(ctx, g)
+	t := transOf(r)
+	page, err := s.UsageFor(ctx, g, t)
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": "magpie couldn't be read: nothing here is a real figure",

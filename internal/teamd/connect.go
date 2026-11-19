@@ -112,20 +112,22 @@ type Connect struct {
 	GatewayErr string
 	// Now is when the page was drawn, for the "read" line.
 	Now time.Time
+	// Trans is the language the page is drawn in.
+	Trans trans
 }
 
 // HasKey says the page can print the key, so its snippets are complete.
 func (c Connect) HasKey() bool { return c.KeyState == keyPresent && c.Key != "" }
 
 // KeyNote is what the page says about the key it has or hasn't.
-func (c Connect) KeyNote() string {
+func (c Connect) KeyNote(t trans) string {
 	switch c.KeyState {
 	case keyPresent:
 		return ""
 	case keyUnreadable:
-		return "The file teamd reads the team key from is there and doesn't hold one key: it must be one key on one line. Ops should check it; until then, paste your team key where the snippets say TEAM_KEY."
+		return t.T("connect.keynote.unreadable")
 	default:
-		return "Ops keeps the team key out of this portal, so this page can't print it. Get it from ops, and put it where the snippets say TEAM_KEY."
+		return t.T("connect.keynote.absent")
 	}
 }
 
@@ -151,10 +153,10 @@ func connectModels(ids []string) []string {
 // is built from — so the page names what the team may actually use. Only
 // this team's are shown: the answer covers every key, and what reaches the
 // page is the ones the key's models allow.
-func (s *Server) ConnectFor(ctx context.Context, g Grant) (Connect, error) {
-	page := Connect{Team: g.Team(), Gateway: s.gatewayURL(), Now: s.now()}
+func (s *Server) ConnectFor(ctx context.Context, g Grant, t trans) (Connect, error) {
+	page := Connect{Trans: t, Team: g.Team(), Gateway: s.gatewayURL(), Now: s.now()}
 	if page.Gateway == "" {
-		page.GatewayErr = "the portal wasn't told the gateway's address, so there is nothing for a member to point at: ops sets it with -gateway-url"
+		page.GatewayErr = t.T("connect.err.gateway")
 	}
 	page.Key, page.KeyState = s.teamKey(g.Team().ID)
 
@@ -168,10 +170,10 @@ func (s *Server) ConnectFor(ctx context.Context, g Grant) (Connect, error) {
 	ids, complete, err := s.ModelsFor(ctx, g.Team().KeyID, mounted)
 	switch {
 	case errors.Is(err, ErrKeyRefused):
-		page.ModelsErr = "The gateway refuses the key mounted for this page, so the snippets below won't work: ops should check that the file holds this team's current key."
+		page.ModelsErr = t.T("connect.err.refused")
 		return page, nil
 	case err != nil:
-		page.ModelsErr = "magpie couldn't be asked which models this key may use"
+		page.ModelsErr = t.T("connect.err.models")
 		return page, nil
 	}
 	page.Models = connectModels(ids)
@@ -199,13 +201,14 @@ func (s *Server) serveConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	page, err := s.ConnectFor(ctx, g)
+	t := transOf(r)
+	page, err := s.ConnectFor(ctx, g, t)
 	if err != nil {
-		s.pageError(w, err)
+		s.pageError(w, r, err)
 		return
 	}
 	page.Token = r.PathValue("token")
-	s.render(w, http.StatusOK, connectPage(page))
+	s.render(w, t, http.StatusOK, connectPage(page))
 }
 
 // snippetEnv is the settings a member's shell needs, as the page shows

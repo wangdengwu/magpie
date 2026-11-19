@@ -6,11 +6,5 @@ import "html/template"
 // lines, and nothing of another's.
 
 func auditPage(v AuditView) string {
-	return render(template.Must(template.New("audit").Funcs(auditFuncs).Parse(auditHTML)), v)
-}
-
-// auditFuncs are what the page's template uses besides its values.
-var auditFuncs = template.FuncMap{
-	"ago":    ago,
-	"plural": plural,
+	return render(template.Must(template.New("audit").Funcs(pageFuncs(v.Trans)).Parse(auditHTML)), v)
 }

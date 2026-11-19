@@ -231,34 +231,38 @@ h2.sect:first-of-type { margin-top:0 }
 `
 
 // accountsHTML is /team/<token>: the team's accounts, with their windows.
+//
+// Its sentences come from the word list (words.go), not from here: a page
+// written this way is the same in every language, and a language that is
+// missing one sentence falls back to English rather than to a blank.
 var accountsHTML = `<!doctype html>
-<html lang="en"><head>
+<html lang="{{.Trans.HTML}}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>{{.Team.Name}} · Claude pool</title>
+<title>{{T "accounts.title" (args "Team" .Team.Name)}}</title>
 <style>` + pageStyle + `</style>
 </head><body><div class="wrap">
 
 <div class="head">
   <h1 class="sel">{{.Team.Name}}</h1>
-  <h2>Claude pool</h2>
+  <h2>{{T "accounts.head"}}</h2>
 </div>
 <div class="sum">
-  <span>{{.On}} of {{.Total}} {{plural .Total "account" "accounts"}} in use</span>
-  <span>account group <span class="mono sel">{{.Group.Name}}</span> <span class="mono sel">({{.Group.ID}})</span></span>
+  <span>{{Tn "accounts.in_use" .Total (args "On" .On "Total" .Total "Accounts" .Total)}}</span>
+  <span>{{T "accounts.group" (args "Name" .Group.Name "ID" .Group.ID)}}</span>
   {{- if .ReadAt}}
-  <span>allowances read {{ago .Now .ReadAt}}</span>
+  <span>{{T "accounts.read" (args "Ago" (ago .Now .ReadAt))}}</span>
   {{- end}}
-  <span class="grow"><a class="btn" href="/team/{{.Token}}/usage">Usage</a></span>
-  <a class="btn" href="/team/{{.Token}}/connect">Connect</a>
-  <a class="btn" href="/team/{{.Token}}/members">Member keys</a>
-  <a class="btn" href="/team/{{.Token}}/audit">History</a>
-  <a class="btn" href="/team/{{.Token}}/add">Add an account</a>
+  <span class="grow"><a class="btn" href="/team/{{.Token}}/usage">{{T "accounts.nav.usage"}}</a></span>
+  <a class="btn" href="/team/{{.Token}}/connect">{{T "accounts.nav.connect"}}</a>
+  <a class="btn" href="/team/{{.Token}}/members">{{T "accounts.nav.members"}}</a>
+  <a class="btn" href="/team/{{.Token}}/audit">{{T "accounts.nav.audit"}}</a>
+  <a class="btn" href="/team/{{.Token}}/add">{{T "accounts.nav.add"}}</a>
 </div>
 
 {{- if .Added}}
-<p class="note ok">Added <span class="mono sel">{{.Added}}</span> to the team's pool.</p>
+<p class="note ok">{{T "accounts.added" (args "Entry" .Added)}}</p>
 {{- end}}
 
 {{- if .Notice.Text}}
@@ -266,13 +270,13 @@ var accountsHTML = `<!doctype html>
 {{- end}}
 
 {{- if .More}}
-<p class="note warn">This group holds more accounts than one page draws. The first {{len .Rows}} are shown; {{.More}} more are in magpie's group and not here.</p>
+<p class="note warn">{{T "accounts.more" (args "Shown" (len .Rows) "More" .More)}}</p>
 {{- end}}
 
 {{- if not .Rows}}
 <div class="empty">
-  <p class="big">This team's pool is empty</p>
-  <p>Its account group <span class="mono sel">{{.Group.Name}}</span> holds no account yet.</p>
+  <p class="big">{{T "accounts.empty"}}</p>
+  <p>{{T "accounts.empty.why" (args "Name" .Group.Name)}}</p>
 </div>
 {{- else}}
 <div class="cards">
@@ -286,12 +290,12 @@ var accountsHTML = `<!doctype html>
       <div class="meta">{{.ProviderName}}{{if .Plan}} · <span class="plan">{{.Plan}}</span>{{end}}{{if .Known}} · <span class="mono sel">{{.Entry}}</span>{{end}}</div>
       {{- end}}
     </div>
-    {{- if not .Known}}<span class="chip lost">not in magpie</span>
-    {{- else if .Key}}<span class="chip key">API key</span>
-    {{- else if .On}}<span class="chip on">in use</span>
-    {{- else if .Paused}}<span class="chip paused">paused</span>
-    {{- else}}<span class="chip off">disabled</span>{{end}}
-    {{- with .Switch}}
+    {{- if not .Known}}<span class="chip lost">{{T "accounts.chip.lost"}}</span>
+    {{- else if .Key}}<span class="chip key">{{T "accounts.chip.key"}}</span>
+    {{- else if .On}}<span class="chip on">{{T "accounts.chip.on"}}</span>
+    {{- else if .Paused}}<span class="chip paused">{{T "accounts.chip.paused"}}</span>
+    {{- else}}<span class="chip off">{{T "accounts.chip.off"}}</span>{{end}}
+    {{- with .Switch $.Trans}}
     <form method="post" action="/team/{{$.Token}}/accounts/{{.Action}}">
       <input type="hidden" name="account" value="{{$row.Entry}}">
       <button class="btn small{{if eq .Action "off"}} danger{{end}}" type="submit">{{.Label}}</button>
@@ -299,10 +303,10 @@ var accountsHTML = `<!doctype html>
     {{- end}}
   </div>
 
-  {{- with .Warning}}
+  {{- with .Warning $.Trans}}
   <p class="why">{{.}}</p>
   {{- end}}
-  {{- with .WhyNot}}
+  {{- with .WhyNot $.Trans}}
   <p class="why">{{.}}</p>
   {{- end}}
 
@@ -322,14 +326,14 @@ var accountsHTML = `<!doctype html>
         <div class="track{{if .Empty}} full{{end}}"><i style="width:{{.ShareInt}}%"></i></div>
         {{- end}}
         {{- if .Resets}}
-        <div class="reset"><span>resets {{.Resets}}{{if .ResetsIn}} · {{.ResetsIn}}{{end}}</span></div>
+        <div class="reset"><span>{{T "accounts.resets" (args "At" .Resets)}}{{if .ResetsIn}} · {{.ResetsIn}}{{end}}</span></div>
         {{- end}}
       </div>
       {{- end}}
     </div>
     {{- end}}
     {{- if $r.ReadAt}}
-    <div class="read">read {{ago $.Now $r.ReadAt}}</div>
+    <div class="read">{{T "accounts.read.at" (args "Ago" (ago $.Now $r.ReadAt))}}</div>
     {{- end}}
   {{- end}}
 
@@ -344,34 +348,50 @@ var accountsHTML = `<!doctype html>
 </div></body></html>
 `
 
-// errorHTML is what a page says when magpie couldn't be read.
-var errorHTML = `<!doctype html>
-<html lang="en"><head>
+// notFoundHTML is what a page says when the link names no team. It says
+// nothing about why: a chat client that cut a token short must not learn
+// which part was wrong, and neither must a guess.
+var notFoundHTML = `<!doctype html>
+<html lang="{{.Trans.HTML}}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>teamd</title>
+<title>{{T "notfound.title"}}</title>
 <style>` + pageStyle + `</style>
 </head><body><div class="said">
-<p class="big">magpie didn't answer</p>
-<p>This page reads the team's accounts from magpie, and magpie couldn't be reached. Nothing has been changed. Try again in a moment, and tell ops if it stays like this.</p>
+<p class="big">{{T "notfound.big"}}</p>
+<p>{{T "notfound.why"}}</p>
+</div></body></html>
+`
+
+// errorHTML is what a page says when magpie couldn't be read.
+var errorHTML = `<!doctype html>
+<html lang="{{.Trans.HTML}}"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{T "error.title"}}</title>
+<style>` + pageStyle + `</style>
+</head><body><div class="said">
+<p class="big">{{T "error.big"}}</p>
+<p>{{T "error.why"}}</p>
 </div></body></html>
 `
 
 // addHTML is /team/<token>/add: what adding an account will ask for, and the
 // button that starts one. It is a plain form: no script runs here.
 var addHTML = `<!doctype html>
-<html lang="en"><head>
+<html lang="{{.Trans.HTML}}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Add an account · {{.Team.Name}}</title>
+<title>{{T "add.title" (args "Team" .Team.Name)}}</title>
 <style>` + pageStyle + `</style>
 </head><body><div class="wrap">
 
 <div class="head">
   <h1 class="sel"><a href="/team/{{.Token}}" class="back">←</a> {{.Team.Name}}</h1>
-  <h2>Add an account</h2>
+  <h2>{{T "add.head"}}</h2>
 </div>
 
 {{- if .Notice.Text}}
@@ -381,22 +401,22 @@ var addHTML = `<!doctype html>
 <div class="card">
   <div class="top">
     <div class="who prose">
-      <div class="name">A Claude subscription, signed in for the team</div>
-      <div class="meta plain">Its allowance is used by everyone with the team's key.</div>
+      <div class="name">{{T "add.card.title"}}</div>
+      <div class="meta plain">{{T "add.card.why"}}</div>
     </div>
     <form method="post" action="/team/{{.Token}}/add">
-      <button class="btn" type="submit">Start</button>
+      <button class="btn" type="submit">{{T "add.start"}}</button>
     </form>
   </div>
   <ol class="steps prose">
-    <li>Press <b>Start</b>, and the portal makes a Claude sign-in link.</li>
-    <li>Open that link in a browser on the computer you are signed in to Claude on, and approve it.</li>
-    <li>The browser ends on an address that begins <span class="mono">http://localhost:</span> and shows an error page — that is expected. Copy that whole address.</li>
-    <li>Paste it back. The account appears in the team's pool.</li>
+    <li>{{T "add.step.1"}}</li>
+    <li>{{T "add.step.2"}}</li>
+    <li>{{T "add.step.3"}}</li>
+    <li>{{T "add.step.4"}}</li>
   </ol>
 </div>
 
-<p class="note prose">The account's own allowance is used by the team. Anything you sign in here can be disabled on the pool's page at any time, and removed only by ops.</p>
+<p class="note prose">{{T "add.note"}}</p>
 
 </div></body></html>
 `
@@ -404,17 +424,17 @@ var addHTML = `<!doctype html>
 // signInHTML is /team/<token>/signin/<id>: the vendor's link, the field for
 // what the browser ended on, and the way out.
 var signInHTML = `<!doctype html>
-<html lang="en"><head>
+<html lang="{{.Trans.HTML}}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Signing in · {{.Team.Name}}</title>
+<title>{{T "signin.title" (args "Team" .Team.Name)}}</title>
 <style>` + pageStyle + `</style>
 </head><body><div class="wrap">
 
 <div class="head">
   <h1 class="sel"><a href="/team/{{.Token}}" class="back">←</a> {{.Team.Name}}</h1>
-  <h2>Add an account</h2>
+  <h2>{{T "add.head"}}</h2>
 </div>
 
 {{- if .Notice.Text}}
@@ -423,35 +443,37 @@ var signInHTML = `<!doctype html>
 
 {{- if .SignIn.Done}}
 <div class="card prose">
-  <p class="step"><b>{{.SignIn.User}}</b> is signed in{{if .SignIn.Plan}} on <b>{{.SignIn.Plan}}</b>{{end}}
-  {{- if .SignIn.Again}} — magpie had it already, so its sign-in was renewed{{end}}.</p>
-  <p class="note">It is in the team's pool now.</p>
-  <p><a class="btn" href="/team/{{.Token}}">Back to the pool</a></p>
+  {{- if .SignIn.Again}}
+  <p class="step">{{T "signin.done.again" (args "User" .SignIn.User "Plan" (signInPlan .SignIn))}}</p>
+  {{- else}}
+  <p class="step">{{if .SignIn.Plan}}{{T "signin.done.plan" (args "User" .SignIn.User "Plan" .SignIn.Plan)}}{{else}}{{T "signin.done" (args "User" .SignIn.User)}}{{end}}</p>
+  {{- end}}
+  <p class="note">{{T "signin.done.pool"}}</p>
+  <p><a class="btn" href="/team/{{.Token}}">{{T "signin.back"}}</a></p>
 </div>
 {{- else if .SignIn.Waiting}}
 <div class="card prose">
-  <p class="step">Open this link in the browser you are signed in to Claude on:</p>
+  <p class="step">{{T "signin.open"}}</p>
   <p class="link mono sel">{{.SignIn.URL}}</p>
 
-  <p class="step">Then paste the address that browser ended on. It begins
-  <span class="mono">http://localhost:</span> and the page it shows is an error — that is expected.</p>
+  <p class="step">{{T "signin.paste"}}</p>
   <form method="post" action="/team/{{.Token}}/signin/{{.SignIn.ID}}/callback">
     <input class="field" type="text" name="url" autocomplete="off" autocapitalize="off"
            autocorrect="off" spellcheck="false" placeholder="http://localhost:…/callback?code=…&state=…" required>
-    <button class="btn" type="submit">Finish</button>
+    <button class="btn" type="submit">{{T "signin.finish"}}</button>
   </form>
-  <p class="note">This link stops working after 15 minutes, or when the browser's own callback reaches magpie first.</p>
+  <p class="note">{{T "signin.until"}}</p>
 </div>
 <form method="post" action="/team/{{.Token}}/signin/{{.SignIn.ID}}/cancel">
-  <button class="btn quiet" type="submit">Cancel this sign-in</button>
+  <button class="btn quiet" type="submit">{{T "signin.cancel"}}</button>
 </form>
 {{- else}}
 <div class="card prose">
-  <p class="step">This sign-in is {{.SignIn.State}}.</p>
+  <p class="step">{{T "signin.state" (args "State" (signInWords .SignIn))}}</p>
   {{- if .SignIn.Error}}
   <p class="note lost">{{.SignIn.Error}}</p>
   {{- end}}
-  <p><a class="btn" href="/team/{{.Token}}/add">Start another</a></p>
+  <p><a class="btn" href="/team/{{.Token}}/add">{{T "signin.again"}}</a></p>
 </div>
 {{- end}}
 
@@ -466,35 +488,35 @@ var signInHTML = `<!doctype html>
 // what the team's requests spent. Adding them together would be a number
 // that means nothing.
 var usageHTML = `<!doctype html>
-<html lang="en"><head>
+<html lang="{{.Trans.HTML}}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Usage · {{.Team.Name}}</title>
+<title>{{T "usage.title" (args "Team" .Team.Name)}}</title>
 <style>` + pageStyle + `</style>
 </head><body><div class="wrap">
 
 <div class="head">
   <h1 class="sel"><a href="/team/{{.Token}}" class="back">←</a> {{.Team.Name}}</h1>
-  <h2>Usage</h2>
+  <h2>{{T "usage.head"}}</h2>
 </div>
 <div class="sum">
-  <span>account group <span class="mono sel">{{.Group.Name}}</span> <span class="mono sel">({{.Group.ID}})</span></span>
+  <span>{{T "accounts.group" (args "Name" .Group.Name "ID" .Group.ID)}}</span>
   {{- if .UsageReadAt}}
-  <span>allowances read {{ago .Now .UsageReadAt}}</span>
+  <span>{{T "accounts.read" (args "Ago" (ago .Now .UsageReadAt))}}</span>
   {{- else}}
-  <span>no allowance read yet</span>
+  <span>{{T "usage.no_read"}}</span>
   {{- end}}
-  <span>budget read {{ago .Now .KeyReadAt}}</span>
+  <span>{{T "usage.budget_read" (args "Ago" (ago .Now .KeyReadAt))}}</span>
 </div>
 
-<h2 class="sect">The team key's budget{{if .Key}} <span class="mono sel">({{.Key.Name}} · {{.Key.ID}})</span>{{end}}</h2>
+<h2 class="sect">{{T "usage.budget.head"}}{{if .Key}} <span class="mono sel">({{.Key.Name}} · {{.Key.ID}})</span>{{end}}</h2>
 {{- if .KeyErr}}
-<p class="note warn">{{.KeyErr}}. The team's requests are not held to a budget this page can show.</p>
+<p class="note warn">{{T "usage.budget.err" (args "Why" .KeyErr)}}</p>
 {{- else if not .Limits}}
 <div class="card prose">
-  <div class="name">No cap</div>
-  <p class="note">Gateways key <span class="mono sel">{{.Key.Name}}</span> has no limit set, so nothing on this page stops the team's requests. Ops can set one in magpie's Gateway page.</p>
+  <div class="name">{{T "usage.nocap.title"}}</div>
+  <p class="note">{{T "usage.nocap.why" (args "Name" .Key.Name)}}</p>
 </div>
 {{- else}}
 <div class="cards">
@@ -503,42 +525,42 @@ var usageHTML = `<!doctype html>
     <div class="top">
       <div class="who">
         <div class="name">{{limitWord .}}</div>
-        <div class="meta">{{if .Models}}only {{len .Models}} {{plural (len .Models) "model" "models"}} {{else}}every model{{end}}{{if .CacheReads}} · cache reads counted{{end}}</div>
+        <div class="meta">{{if .Models}}{{Tn "usage.models.only" (len .Models) (args "N" (len .Models))}}{{else}}{{T "usage.models.every"}}{{end}}{{if .CacheReads}} · {{T "usage.cache_counted"}}{{end}}</div>
       </div>
-      {{- if .Spent}}<span class="chip lost">spent</span>
-      {{- else}}<span class="chip on">within its cap</span>{{end}}
+      {{- if .Spent}}<span class="chip lost">{{T "usage.chip.spent"}}</span>
+      {{- else}}<span class="chip on">{{T "usage.chip.within"}}</span>{{end}}
     </div>
 
     {{- if .HasTokens}}
     <div class="win">
-      <div class="labels"><span>tokens</span><span class="n sel">{{tokens .TokensUsed}} / {{tokens .Tokens}}</span></div>
+      <div class="labels"><span>{{T "usage.tokens"}}</span><span class="n sel">{{tokens .TokensUsed}} / {{tokens .Tokens}}</span></div>
       <div class="track{{if ge .TokenShare 100}} full{{end}}"><i style="width:{{.TokenShare}}%"></i></div>
-      <div class="reset"><span>{{tokens .TokensLeft}} left</span></div>
+      <div class="reset"><span>{{T "usage.left" (args "Value" (tokens .TokensLeft))}}</span></div>
     </div>
     {{- end}}
     {{- if .HasCost}}
     <div class="win">
-      <div class="labels"><span>cost</span><span class="n sel">{{cost .CostUsed}} / {{cost .Cost}}</span></div>
+      <div class="labels"><span>{{T "usage.cost"}}</span><span class="n sel">{{cost .CostUsed}} / {{cost .Cost}}</span></div>
       <div class="track{{if ge .CostShare 100}} full{{end}}"><i style="width:{{.CostShare}}%"></i></div>
-      <div class="reset"><span>{{cost .CostLeft}} left</span></div>
+      <div class="reset"><span>{{T "usage.left" (args "Value" (cost .CostLeft))}}</span></div>
     </div>
     {{- end}}
 
-    <div class="reset"><span>starts again {{.Resets $.Now}}</span></div>
-    <p class="note">{{.Calls}} {{plural .Calls "request" "requests"}}{{if .Unpriced}} · {{.Unpriced}} not priced, so not counted against a cost cap{{end}}</p>
+    <div class="reset"><span>{{T "usage.starts" (args "At" (resets . $.Now))}}</span></div>
+    <p class="note">{{Tn "usage.calls" .Calls (args "N" .Calls)}}{{if .Unpriced}} · {{T "usage.unpriced" (args "N" .Unpriced)}}{{end}}</p>
   </section>
   {{- end}}
 </div>
 {{- end}}
 
-<h2 class="sect">What each account has used</h2>
+<h2 class="sect">{{T "usage.accounts.head"}}</h2>
 {{- if .AccountsErr}}
 <p class="note warn">{{.AccountsErr}}.</p>
 {{- end}}
 {{- if not .Accounts}}
 <div class="empty">
-  <p class="big">This team's pool is empty</p>
-  <p>Its account group <span class="mono sel">{{.Group.Name}}</span> holds no account yet.</p>
+  <p class="big">{{T "accounts.empty"}}</p>
+  <p>{{T "accounts.empty.why" (args "Name" .Group.Name)}}</p>
 </div>
 {{- else}}
 <div class="cards">
@@ -551,12 +573,12 @@ var usageHTML = `<!doctype html>
         <div class="meta">{{if .Plan}}<span class="plan">{{.Plan}}</span> · {{end}}<span class="mono sel">{{.Entry}}</span></div>
         {{- end}}
       </div>
-      {{- if .Lost}}<span class="chip lost">not in magpie</span>
-      {{- else if .Key}}<span class="chip key">API key</span>
-      {{- else if not .Reading}}<span class="chip off">not read</span>
-      {{- else if not .On}}<span class="chip off">not serving</span>
-      {{- else if .Spent}}<span class="chip paused">used up</span>
-      {{- else}}<span class="chip on">{{.ShareInt}}% of its tightest window</span>{{end}}
+      {{- if .Lost}}<span class="chip lost">{{T "usage.chip.lost"}}</span>
+      {{- else if .Key}}<span class="chip key">{{T "usage.chip.key"}}</span>
+      {{- else if not .Reading}}<span class="chip off">{{T "usage.chip.unread"}}</span>
+      {{- else if not .On}}<span class="chip off">{{T "usage.chip.idle"}}</span>
+      {{- else if .Spent}}<span class="chip paused">{{T "usage.chip.usedup"}}</span>
+      {{- else}}<span class="chip on">{{T "usage.chip.share" (args "N" .ShareInt)}}</span>{{end}}
     </div>
 
     {{- if .Reading}}
@@ -575,14 +597,14 @@ var usageHTML = `<!doctype html>
           <div class="track{{if .Empty}} full{{end}}"><i style="width:{{.ShareInt}}%"></i></div>
           {{- end}}
           {{- if .Resets}}
-          <div class="reset"><span>resets {{.Resets}}{{if .ResetsIn}} · {{.ResetsIn}}{{end}}</span></div>
+          <div class="reset"><span>{{T "accounts.resets" (args "At" .Resets)}}{{if .ResetsIn}} · {{.ResetsIn}}{{end}}</span></div>
           {{- end}}
         </div>
         {{- end}}
       </div>
       {{- end}}
       {{- if $r.ReadAt}}
-      <div class="read">read {{ago $.Now $r.ReadAt}}</div>
+      <div class="read">{{T "usage.read" (args "Ago" (ago $.Now $r.ReadAt))}}</div>
       {{- end}}
     {{- end}}
 
@@ -594,21 +616,21 @@ var usageHTML = `<!doctype html>
 </div>
 {{- end}}
 
-<h2 class="sect">What each member key has used</h2>
+<h2 class="sect">{{T "usage.member.head"}}</h2>
 {{- if .MemberErr}}
 <p class="note warn">{{.MemberErr}}.</p>
 {{- end}}
 {{- if .Members}}
 <div class="card">
   <table class="log">
-    <thead><tr><th>Member</th>{{range .MemberPeriods}}<th>{{.Head}}</th>{{end}}</tr></thead>
+    <thead><tr><th>{{T "usage.member.member"}}</th>{{range .MemberPeriods}}<th>{{T .Key}}</th>{{end}}</tr></thead>
     <tbody>
     {{- range .Members}}
     <tr>
-      <td data-label="Member"><span class="sel">{{.Name}}</span>{{if .Revoked}} <span class="chip off">revoked</span>{{end}}</td>
-      <td data-label="Today">{{memberCell .Today}}</td>
-      <td data-label="Last 7 days">{{memberCell .Week}}</td>
-      <td data-label="Last 30 days">{{memberCell .Month}}</td>
+      <td data-label="{{T "usage.member.member"}}"><span class="sel">{{.Name}}</span>{{if .Revoked}} <span class="chip off">{{T "usage.member.revoked"}}</span>{{end}}</td>
+      <td data-label="{{T "usage.member.today"}}">{{memberCell .Today}}</td>
+      <td data-label="{{T "usage.member.week"}}">{{memberCell .Week}}</td>
+      <td data-label="{{T "usage.member.month"}}">{{memberCell .Month}}</td>
     </tr>
     {{- end}}
     </tbody>
@@ -616,8 +638,8 @@ var usageHTML = `<!doctype html>
 </div>
 {{- else if not .MemberErr}}
 <div class="empty">
-  <p class="big">No member keys yet</p>
-  <p>This team hasn't issued a key to a member. Keys issued on the <a href="/team/{{.Token}}/members">Member keys</a> page are counted here.</p>
+  <p class="big">{{T "usage.member.none"}}</p>
+  <p>{{T "usage.member.none.why" (args "Members" (membersURL .Token))}}</p>
 </div>
 {{- end}}
 
@@ -637,22 +659,22 @@ func memberCell(s SpendTotals) string {
 // connectHTML is /team/<token>/connect: what a member needs to reach the
 // team's pool, and how to tell it worked.
 var connectHTML = `<!doctype html>
-<html lang="en"><head>
+<html lang="{{.Trans.HTML}}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Connect · {{.Team.Name}}</title>
+<title>{{T "connect.title" (args "Team" .Team.Name)}}</title>
 <style>` + pageStyle + `</style>
 </head><body><div class="wrap">
 
 <div class="head">
   <h1 class="sel"><a href="/team/{{.Token}}" class="back">←</a> {{.Team.Name}}</h1>
-  <h2>Connect</h2>
+  <h2>{{T "connect.head"}}</h2>
 </div>
 <div class="sum">
-  <span>send this page to your team</span>
+  <span>{{T "connect.sum.send"}}</span>
   {{- if .Gateway}}
-  <span>the pool is <span class="mono sel">{{.Gateway}}</span></span>
+  <span>{{T "connect.sum.pool" (args "URL" .Gateway)}}</span>
   {{- end}}
 </div>
 
@@ -660,60 +682,60 @@ var connectHTML = `<!doctype html>
 <p class="note warn">{{.GatewayErr}}</p>
 {{- else}}
 
-<h2 class="sect">1 · The two settings</h2>
+<h2 class="sect">{{T "connect.s1"}}</h2>
 <div class="card prose">
-  <p class="step">Claude Code talks to magpie when these two are set. Export them in your shell, or put them in the file below — either works, and neither changes your claude.ai sign-in.</p>
+  <p class="step">{{T "connect.s1.step"}}</p>
   <div class="code"><pre class="sel">{{env .}}</pre></div>
-  <p class="note">{{if .HasKey}}The key is the team's. It is the only thing that has to stay private: don't paste it into a ticket, a chat, or a screenshot.{{else}}Replace <span class="mono">TEAM_KEY</span> with your team key from ops.{{end}}</p>
+  <p class="note">{{if .HasKey}}{{T "connect.s1.key"}}{{else}}{{T "connect.s1.placeholder"}}{{end}}</p>
 </div>
 
-<h2 class="sect">2 · Or in Claude Code's own settings file</h2>
+<h2 class="sect">{{T "connect.s2"}}</h2>
 <div class="card prose">
-  <p class="step">Put this in <span class="mono">~/.claude/settings.json</span> (on Windows, <span class="mono">%USERPROFILE%\.claude\settings.json</span>). If the file already exists, add the <span class="mono">env</span> entries to what is there rather than replacing it.</p>
+  <p class="step">{{T "connect.s2.step"}}</p>
   <div class="code"><pre class="sel">{{json .}}</pre></div>
 </div>
 
-<h2 class="sect">3 · Check that it works</h2>
+<h2 class="sect">{{T "connect.s3"}}</h2>
 <div class="card prose">
-  <p class="step">This asks the gateway for the model list. Nothing is spent: it is a read, not a request to a model.</p>
+  <p class="step">{{T "connect.s3.step"}}</p>
   <div class="code"><pre class="sel">{{check .}}</pre></div>
-  <p class="step">When it works, the answer is a JSON list that begins:</p>
+  <p class="step">{{T "connect.s3.when"}}</p>
   <div class="code"><pre class="sel">{{expected .}}</pre></div>
-  <p class="note">Then run <span class="mono">claude</span> as usual. Pick a model with <span class="mono">/model</span>, or start it with <span class="mono">claude --model {{model .}}</span>.</p>
+  <p class="note">{{T "connect.s3.then" (args "Model" (model .))}}</p>
 </div>
 
-<h2 class="sect">4 · If it doesn't work</h2>
+<h2 class="sect">{{T "connect.s4"}}</h2>
 <div class="card">
   <div class="prose">
     <dl class="fails">
-      <dt><span class="mono">401</span> · the key isn't one this gateway takes</dt>
-      <dd>Check for a stray space or newline where you pasted it, and that it is this team's key and not another's. If it still fails, the key may have been rotated: ask your lead.</dd>
-      <dt><span class="mono">403</span> · the key isn't allowed here</dt>
-      <dd>Two causes: the key is held to something you asked for and aren't allowed (a model, an account), or you reached magpie from an address it doesn't serve the network on. Ask your lead which.</dd>
-      <dt><span class="mono">429</span> · the team's budget is spent</dt>
-      <dd>The team key's limit for this window is used up. It resets on its own — your lead sees when on the usage page — or the account's own allowance is spent and magpie has nothing else on. Waiting or asking your lead to enable another account are the two ways out.</dd>
-      <dt>It hangs, or the connection is refused</dt>
-      <dd>The address is wrong, or magpie isn't running. Compare yours with the one above, character for character.</dd>
-      <dt>Anything else</dt>
-      <dd>Send your lead what the command printed. The usage page shows what the team has spent, which is usually the next question.</dd>
+      <dt><span class="mono">401</span> · {{T "connect.fail.401"}}</dt>
+      <dd>{{T "connect.fail.401.why"}}</dd>
+      <dt><span class="mono">403</span> · {{T "connect.fail.403"}}</dt>
+      <dd>{{T "connect.fail.403.why"}}</dd>
+      <dt><span class="mono">429</span> · {{T "connect.fail.429"}}</dt>
+      <dd>{{T "connect.fail.429.why"}}</dd>
+      <dt>{{T "connect.fail.hang"}}</dt>
+      <dd>{{T "connect.fail.hang.why"}}</dd>
+      <dt>{{T "connect.fail.other"}}</dt>
+      <dd>{{T "connect.fail.other.why"}}</dd>
     </dl>
   </div>
 </div>
 
 {{- end}}
 
-{{- if .KeyNote}}
-<p class="note warn">{{.KeyNote}}</p>
+{{- if .KeyNote $.Trans}}
+<p class="note warn">{{.KeyNote $.Trans}}</p>
 {{- end}}
 
-<h2 class="sect">{{if .Models}}Models this key may use{{else}}Models{{end}}</h2>
+<h2 class="sect">{{if .Models}}{{T "connect.models.head.key"}}{{else}}{{T "connect.models.head"}}{{end}}</h2>
 {{- if .ModelsErr}}
 <p class="note warn">{{.ModelsErr}}.</p>
 {{- else if not .Models}}
-<p class="note">magpie lists no models for this key yet: it may serve none until a provider is on. Ask your lead.</p>
+<p class="note">{{T "connect.models.none"}}</p>
 {{- else}}
 <div class="card prose">
-  <p class="step">{{len .Models}} {{plural (len .Models) "model" "models"}}{{if .ModelsPartial}}, and any others a routing group this key names adds{{end}}. A client may name any of these, with or without the <span class="mono">provider/</span> part.</p>
+  <p class="step">{{Tn "connect.models.step" (len .Models) (args "N" (len .Models) "More" (modelsMore .Trans .ModelsPartial))}}</p>
   <div class="chips">
     {{- range .Models}}<span class="chip mono sel">{{.}}</span>
     {{- end}}
@@ -731,42 +753,42 @@ var connectHTML = `<!doctype html>
 // lead can see that something with their link asked for an account that
 // isn't theirs.
 var auditHTML = `<!doctype html>
-<html lang="en"><head>
+<html lang="{{.Trans.HTML}}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>History · {{.Team.Name}}</title>
+<title>{{T "audit.title" (args "Team" .Team.Name)}}</title>
 <style>` + pageStyle + `</style>
 </head><body><div class="wrap">
 
 <div class="head">
   <h1 class="sel"><a href="/team/{{.Token}}" class="back">←</a> {{.Team.Name}}</h1>
-  <h2>History</h2>
+  <h2>{{T "audit.head"}}</h2>
 </div>
 <div class="sum">
-  <span>{{.Total}} {{plural .Total "change" "changes"}} through the portal</span>
+  <span>{{Tn "audit.changes" .Total (args "N" .Total)}}</span>
   {{- if gt .Total (len .Rows)}}
-  <span>the last {{len .Rows}} are shown</span>
+  <span>{{T "audit.shown" (args "N" (len .Rows))}}</span>
   {{- end}}
 </div>
 
 {{- if not .Rows}}
 <div class="empty">
-  <p class="big">Nothing yet</p>
-  <p>No account has been added, disabled or enabled through this team's link.</p>
+  <p class="big">{{T "audit.empty"}}</p>
+  <p>{{T "audit.empty.why"}}</p>
 </div>
 {{- else}}
 <div class="card">
   <table class="log">
-    <thead><tr><th>When</th><th>What</th><th>Account</th><th>By</th><th></th></tr></thead>
+    <thead><tr><th>{{T "audit.th.when"}}</th><th>{{T "audit.th.what"}}</th><th>{{T "audit.th.account"}}</th><th>{{T "audit.th.by"}}</th><th></th></tr></thead>
     <tbody>
     {{- range .Rows}}
     <tr{{if .Refused}} class="refused"{{end}}>
-      <td class="when" data-label="When"><span class="sel">{{.At.Local.Format "01-02 15:04"}}</span> <span class="muted">{{ago $.Now .At}}</span></td>
-      <td data-label="What">{{.Verb}}</td>
-      <td data-label="Account">{{if .Name}}<span class="sel">{{.Name}}</span>{{if .Account}} <span class="mono muted">{{.Account}}</span>{{end}}{{else if .Account}}<span class="mono sel">{{.Account}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
-      <td class="muted" data-label="By">{{.Who}}</td>
-      <td class="mark">{{if .Refused}}<span class="chip lost">refused</span>{{end}}</td>
+      <td class="when" data-label="{{T "audit.th.when"}}"><span class="sel">{{.At.Local.Format "01-02 15:04"}}</span> <span class="muted">{{ago $.Now .At}}</span></td>
+      <td data-label="{{T "audit.th.what"}}">{{.Verb}}</td>
+      <td data-label="{{T "audit.th.account"}}">{{if .Name}}<span class="sel">{{.Name}}</span>{{if .Account}} <span class="mono muted">{{.Account}}</span>{{end}}{{else if .Account}}<span class="mono sel">{{.Account}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="muted" data-label="{{T "audit.th.by"}}">{{.Who}}</td>
+      <td class="mark">{{if .Refused}}<span class="chip lost">{{T "audit.refused"}}</span>{{end}}</td>
     </tr>
     {{- end}}
     </tbody>
@@ -774,7 +796,7 @@ var auditHTML = `<!doctype html>
 </div>
 {{- end}}
 
-<p class="note prose">A line is written for each change made through this page's portal, and for each request the portal turned away. Removing an account, and everything ops does with magpie's own tools, is not recorded here.</p>
+<p class="note prose">{{T "audit.note"}}</p>
 
 </div></body></html>
 `
