@@ -234,7 +234,7 @@ function renderGatewayKeys() {
     tick.onclick = () => gatewayKeyAction(k.off ? "on-key" : "off-key", { key: k.id });
     // the copy sits by the key it copies (the owner: stranded among the
     // badges it read as nobody's); Rotate and Remove wait in the row's menu
-    row.append(tick, gatewayRename(k), el("span", "plan mono", k.masked), ...(k.admin ? [] : [copyCallerKeyBtn(k)]), el("span", "grow"), ...(k.browser ? [gatewayBrowserTag()] : k.readOnly ? [gatewayReadOnlyTag()] : k.admin && gatewayKeyCanAdmin(k) ? [gatewayAdminTag(k)] : []), ...(k.memory && gatewayKeyCanAdmin(k) ? [gatewayMemoryTag()] : []), gatewayModelsBadge(k), ...gatewayKeptOutBadge(k), ...gatewayMCPBadge(k), gatewayQuotasBadge(k), ...(k.browser || k.readOnly ? [] : [gatewayConcurrencyBadge(k), gatewayTierBadge(k), gatewayRedactBadge(k)]), gatewayLimitBadge(k), gatewayKeyMore(k));
+    row.append(tick, gatewayRename(k), el("span", "plan mono", k.masked), ...(k.admin ? [] : [copyCallerKeyBtn(k)]), el("span", "grow"), ...(k.browser ? [gatewayBrowserTag()] : k.readOnly ? [gatewayReadOnlyTag()] : k.admin && gatewayKeyCanAdmin(k) ? [gatewayAdminTag(k)] : []), ...(k.memory && gatewayKeyCanAdmin(k) ? [gatewayMemoryTag()] : []), ...(k.issues && gatewayKeyCanAdmin(k) ? [gatewayIssuerTag()] : []), gatewayModelsBadge(k), ...gatewayKeptOutBadge(k), ...gatewayMCPBadge(k), gatewayQuotasBadge(k), ...(k.browser || k.readOnly ? [] : [gatewayConcurrencyBadge(k), gatewayTierBadge(k), gatewayRedactBadge(k)]), gatewayLimitBadge(k), gatewayKeyMore(k));
     const under = gatewayLimit?.id === k.id ? [gatewayLimitEditor(k)] : keyUsed(k).map((u) => gatewayLimitLine(k, u));
     if (under.length) row.classList.add("with-limit"), row.append(...under);
     list.append(row);
@@ -372,7 +372,29 @@ function gatewayAdvanced(k, anchor) {
   openRowMenu(anchor, [
     { name: "Management API", icon: ADVANCED_GLYPH, run: () => gatewayAdminPick(k, anchor) },
     { name: "Magpie Memory", icon: MEMORY_GLYPH, run: () => gatewayMemoryPick(k, anchor) },
+    { name: "Issue member keys", icon: ROTATE_GLYPH, run: () => gatewayIssuerPick(k, anchor) },
   ]);
+}
+// gatewayIssuerPick sets whether the key may issue keys under itself
+// (issuer-key, `magpie gateway-key issuer <id> on`): what a team portal
+// issues its members' keys under, each held to this key's models,
+// accounts and limits, and stopped with it
+function gatewayIssuerPick(k, anchor) {
+  const opts = [
+    { v: "", name: "Off" },
+    { v: "on", name: "Can issue" },
+  ];
+  openProtoMenu(anchor, opts, k.issues ? "on" : "", async (v) => {
+    if (v === (k.issues ? "on" : "")) return;
+    const out = await gatewayKeyAction("issuer-key", { key: k.id, issues: v === "on" });
+    if (out) status(t(v ? "{name} can issue member keys" : "{name} no longer issues member keys", { name: k.name }), "ok");
+  }, "Issue member keys", "sess-menu");
+}
+// a key that issues member keys says so in its row, always
+function gatewayIssuerTag() {
+  const tag = el("span", "amodels key-readonly key-issues set", t("Issues member keys"));
+  tag.title = t("Keys issued under this key use only its models and accounts, count against its limits, and stop working when it is switched off or removed");
+  return tag;
 }
 const MEMORY_GLYPH = "M3 3.5h10v9H3zM5.5 6h5M5.5 8h5M5.5 10h3";
 // gatewayMemoryPick sets whether the key's agents on other computers may

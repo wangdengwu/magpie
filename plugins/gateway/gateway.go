@@ -30,6 +30,6 @@ func init() {
 		SetAt:    "network #portList",
 		Parts:    []pluginrt.Part{{Slot: "nav.page", Key: "gateway"}},
 		Settings: Settings{CallsPage: 20},
-		Client:   []string{"keys.js", "client.js"},
+		Client:   []string{"i18n.js", "keys.js", "client.js"},
 	})
 }
