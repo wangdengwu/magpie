@@ -104,6 +104,34 @@ type fakeMagpie struct {
 	revoked []string
 	// refuseRevoke makes a revoke answer 404, as another issuer's does.
 	refuseRevoke bool
+	// spends are what each member key used, by "<issuer>/<period>", as
+	// gateway-keys/issuer-usage answers them.
+	spends map[string]IssuerUsage
+	// refuseSpend, when set, is the status issuer-usage answers with, for
+	// the periods it names: a read that fails is what a page must say
+	// rather than draw as zeros.
+	refuseSpend map[string]int
+}
+
+// setSpend makes one key's spend over one period, as magpie's ledger has
+// it. The issuer is the team's gateway key; a key not in the team's live
+// list is one revoked since, and still counts.
+func (f *fakeMagpie) setSpend(issuer, period string, rows ...IssuerSpend) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.spends == nil {
+		f.spends = map[string]IssuerUsage{}
+	}
+	k := issuer + "/" + period
+	u := f.spends[k]
+	u.Period, u.Keys = period, append(u.Keys, rows...)
+	for _, r := range rows {
+		u.Total.Calls += r.Calls
+		u.Total.Input += r.Input
+		u.Total.Output += r.Output
+		u.Total.Cost += r.Cost
+	}
+	f.spends[k] = u
 }
 
 // issueAsk is what an issue-key call sent.
@@ -201,7 +229,8 @@ func (f *fakeMagpie) serve(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case AdminPath + "account-groups", AdminPath + "gateway-keys", AdminPath + "gateway-keys/models",
 		AdminPath + "providers", AdminPath + "login/usage", AdminPath + "account-groups/save",
-		AdminPath + "gateway-keys/issue-key", AdminPath + "gateway-keys/issued-keys", AdminPath + "gateway-keys/revoke-key":
+		AdminPath + "gateway-keys/issue-key", AdminPath + "gateway-keys/issued-keys", AdminPath + "gateway-keys/revoke-key",
+		AdminPath + "gateway-keys/issuer-usage":
 	default:
 		http.NotFound(w, r)
 		return
@@ -313,6 +342,21 @@ func (f *fakeMagpie) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"providers": provs})
 	case AdminPath + "login/usage":
 		_ = json.NewEncoder(w).Encode(usage)
+	case AdminPath + "gateway-keys/issuer-usage":
+		issuer, period := r.URL.Query().Get("issuer"), r.URL.Query().Get("period")
+		f.mu.Lock()
+		u, refuse := f.spends[issuer+"/"+period], f.refuseSpend[period]
+		f.mu.Unlock()
+		if refuse != 0 {
+			w.WriteHeader(refuse)
+			fmt.Fprintf(w, `{"error":"the ledger can't be read"}`)
+			return
+		}
+		u.Period = period
+		if u.Keys == nil {
+			u.Keys = []IssuerSpend{}
+		}
+		_ = json.NewEncoder(w).Encode(u)
 	default:
 		_ = json.NewEncoder(w).Encode(map[string]any{"groups": groups})
 	}

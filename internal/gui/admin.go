@@ -146,6 +146,10 @@ func adminAPI() http.Handler {
 	mux.HandleFunc("POST /gateway-keys/issue-key", adminIssueKey)
 	mux.HandleFunc("GET /gateway-keys/issued-keys", adminIssuedKeys)
 	mux.HandleFunc("POST /gateway-keys/revoke-key", adminRevokeKey)
+	// What each of those keys has spent, by the issuer alone: a record of a
+	// key revoked since still counts under the key it was issued under, so
+	// a lead sees what a member used over their whole time on the team.
+	mux.HandleFunc("GET /gateway-keys/issuer-usage", adminIssuerUsage)
 	// Signing in: the vendor's page and the code to type there are the
 	// answer, for the caller to open on a computer with a browser. Never
 	// opened here, and never given a password: the vendor's page takes it.

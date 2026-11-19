@@ -11,18 +11,20 @@ import "html/template"
 // grant.
 
 func usagePage(u Usage) string {
+	u.MemberPeriods = memberPeriods
 	return render(template.Must(template.New("usage").Funcs(usageFuncs).Parse(usageHTML)), u)
 }
 
 // usageFuncs are what the page's template uses besides its values.
 var usageFuncs = template.FuncMap{
-	"ago":       ago,
-	"until":     until,
-	"windows":   windows,
-	"plural":    plural,
-	"tokens":    fmtTokens,
-	"cost":      fmtCost,
-	"limitWord": limitWord,
+	"ago":        ago,
+	"until":      until,
+	"windows":    windows,
+	"plural":     plural,
+	"tokens":     fmtTokens,
+	"cost":       fmtCost,
+	"limitWord":  limitWord,
+	"memberCell": memberCell,
 }
 
 // limitWord is a limit's window in the page's words: "every 5 hours",

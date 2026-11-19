@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -111,6 +112,59 @@ type Usage struct {
 	// they were. The key's budget is still shown: one failing read does not
 	// hide the other.
 	AccountsErr string
+	// Members are the keys the team issued, and what each spent over the
+	// three periods; MemberErr is why they couldn't be read, "" when they
+	// were. A failed read is said, never drawn as zeros.
+	Members   []MemberUse
+	MemberErr string
+	// MemberPeriods are the three columns, which the page draws from here
+	// rather than naming them in its markup: the periods and their words
+	// are one list.
+	MemberPeriods []struct {
+		Period string
+		Head   string
+	}
+}
+
+// MemberUse is one member key's spend: the three periods the page shows side
+// by side, today, the last 7 days and the last 30.
+type MemberUse struct {
+	ID   string
+	Name string
+	// Revoked says the team's live list no longer holds the key: it was
+	// revoked or ran out, and its figures are what it used while it worked.
+	Revoked bool
+	Today   SpendTotals
+	Week    SpendTotals
+	Month   SpendTotals
+}
+
+// SpendTotals is what a member key used in one period.
+type SpendTotals struct {
+	Calls  int
+	Input  int
+	Output int
+	Cost   float64
+	// Read is false for a period whose read failed, so the cell says it
+	// couldn't be read rather than showing a zero.
+	Read bool
+}
+
+// Tokens is the period's tokens in and out.
+func (s SpendTotals) Tokens() int { return s.Input + s.Output }
+
+// Used says the key did anything at all in the period.
+func (s SpendTotals) Used() bool { return s.Calls > 0 || s.Tokens() > 0 }
+
+// memberPeriods are the three windows the page shows, and the word each
+// column's head uses.
+var memberPeriods = []struct {
+	Period string
+	Head   string
+}{
+	{"today", "Today"},
+	{"7d", "Last 7 days"},
+	{"30d", "Last 30 days"},
 }
 
 // UsageFor is the page's data, from the team's own grant.
@@ -212,7 +266,114 @@ func (s *Server) UsageFor(ctx context.Context, g Grant) (Usage, error) {
 		}
 		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 	})
+	page.Members, page.MemberErr = s.memberUsage(ctx, g)
 	return page, nil
+}
+
+// memberUsage reads what each of the team's member keys spent over the three
+// periods, from magpie's ledger by the team's own issuer.
+//
+// The issuer is the team record's, never a request's: this is the same
+// boundary the rest of the page keeps, and a page can't ask about another
+// team's keys. A key the live list no longer holds is marked revoked and
+// keeps its figures; one magpie's list holds is live.
+//
+// One period failing does not blank the others: each column says it couldn't
+// be read, and the block says which. A read that fails is unknown, never
+// zero.
+func (s *Server) memberUsage(ctx context.Context, g Grant) ([]MemberUse, string) {
+	issued, err := s.admin.MemberKeys(ctx, g.Team().KeyID)
+	if err != nil {
+		return nil, "magpie couldn't be asked which keys this team issued"
+	}
+	if len(issued) == 0 {
+		return nil, ""
+	}
+	type periodAnswer struct {
+		usage IssuerUsage
+		err   error
+	}
+	answers := make([]periodAnswer, len(memberPeriods))
+	var wg sync.WaitGroup
+	for i, p := range memberPeriods {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			answers[i].usage, answers[i].err = s.admin.IssuerUsage(ctx, g.Team().KeyID, p.Period)
+		}()
+	}
+	wg.Wait()
+
+	rows := map[string]*MemberUse{}
+	row := func(id string) *MemberUse {
+		r := rows[id]
+		if r == nil {
+			r = &MemberUse{ID: id}
+			rows[id] = r
+		}
+		return r
+	}
+	failed := ""
+	for i, p := range memberPeriods {
+		a := answers[i]
+		if a.err != nil {
+			if failed == "" {
+				failed = p.Head
+			} else {
+				failed += ", " + p.Head
+			}
+			continue
+		}
+		for _, k := range a.usage.Keys {
+			r := row(k.KeyID)
+			if r.Name == "" {
+				r.Name = k.Name
+			}
+			spend := SpendTotals{Calls: k.Calls, Input: k.Input, Output: k.Output, Cost: k.Cost, Read: true}
+			switch p.Period {
+			case "today":
+				r.Today = spend
+			case "7d":
+				r.Week = spend
+			case "30d":
+				r.Month = spend
+			}
+		}
+	}
+	live := map[string]bool{}
+	for _, k := range issued {
+		live[k.ID] = true
+		r := row(k.ID)
+		if r.Name == "" {
+			r.Name = k.Name
+		}
+	}
+	for id, r := range rows {
+		r.Revoked = !live[id]
+		if r.Name == "" {
+			r.Name = id
+		}
+	}
+	out := make([]MemberUse, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, *r)
+	}
+	// what used the most over the week first, then by name: a lead is
+	// looking for the member spending the most
+	sort.SliceStable(out, func(i, j int) bool {
+		if a, b := out[i].Week.Tokens(), out[j].Week.Tokens(); a != b {
+			return a > b
+		}
+		if a, b := out[i].Week.Calls, out[j].Week.Calls; a != b {
+			return a > b
+		}
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	why := ""
+	if failed != "" {
+		why = "magpie couldn't be asked what the member keys used over " + failed
+	}
+	return out, why
 }
 
 // narrowest is the share of the account's most-used window: the one that

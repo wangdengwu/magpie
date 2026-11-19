@@ -375,3 +375,37 @@ func (c *AdminClient) MemberKeys(ctx context.Context, issuer string) ([]MemberKe
 func (c *AdminClient) RevokeMemberKey(ctx context.Context, issuer, id string) error {
 	return c.post(ctx, "gateway-keys/revoke-key", map[string]string{"issuer": issuer, "id": id}, nil)
 }
+
+// IssuerSpend is what one key a team's gateway key issued has used.
+type IssuerSpend struct {
+	KeyID  string  `json:"keyId"`
+	Name   string  `json:"name"`
+	Calls  int     `json:"calls"`
+	Input  int     `json:"input"`
+	Output int     `json:"output"`
+	Cost   float64 `json:"cost"`
+}
+
+// IssuerUsage is what every key issued under one gateway key has spent over
+// a period: today, the last 7 days, or the last 30.
+//
+// It asks by the issuer alone. magpie keeps the issuer on every record, so
+// a key revoked since is still in the answer and still counts, which a list
+// of live member ids would lose.
+type IssuerUsage struct {
+	Period string        `json:"period"`
+	Since  time.Time     `json:"since"`
+	Total  IssuerSpend   `json:"total"`
+	Keys   []IssuerSpend `json:"keys"`
+}
+
+// IssuerUsage is what issuer's keys spent over period, "today", "7d" or
+// "30d". It is a read: nothing in magpie changes.
+func (c *AdminClient) IssuerUsage(ctx context.Context, issuer, period string) (IssuerUsage, error) {
+	var out IssuerUsage
+	q := "gateway-keys/issuer-usage?issuer=" + url.QueryEscape(issuer) + "&period=" + url.QueryEscape(period)
+	if err := c.get(ctx, q, &out); err != nil {
+		return IssuerUsage{}, err
+	}
+	return out, nil
+}

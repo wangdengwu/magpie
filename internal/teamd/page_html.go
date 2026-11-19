@@ -212,6 +212,11 @@ h2.sect:first-of-type { margin-top:0 }
   .log tr:last-child { border-bottom:none }
   .log td { padding:1px 0; border:none; display:grid; grid-template-columns:4.2rem minmax(0,1fr); gap:6px }
   .log td::before { content:attr(data-label); color:var(--muted); font-size:10px }
+  /* the member keys' periods are three of the same kind, and their labels
+     are longer than a log's ("Last 30 days"): the column is wider, so a
+     label sits on its value's line instead of over two */
+  .log td[data-label="Last 7 days"], .log td[data-label="Last 30 days"],
+  .log td[data-label="Today"] { grid-template-columns:5.6rem minmax(0,1fr) }
   /* the mark is not a labelled field: it sits under the rest, its size
      kept, and an empty one takes no room at all */
   .log td.mark { display:block }
@@ -589,16 +594,48 @@ var usageHTML = `<!doctype html>
 </div>
 {{- end}}
 
+<h2 class="sect">What each member key has used</h2>
+{{- if .MemberErr}}
+<p class="note warn">{{.MemberErr}}.</p>
+{{- end}}
+{{- if .Members}}
+<div class="card">
+  <table class="log">
+    <thead><tr><th>Member</th>{{range .MemberPeriods}}<th>{{.Head}}</th>{{end}}</tr></thead>
+    <tbody>
+    {{- range .Members}}
+    <tr>
+      <td data-label="Member"><span class="sel">{{.Name}}</span>{{if .Revoked}} <span class="chip off">revoked</span>{{end}}</td>
+      <td data-label="Today">{{memberCell .Today}}</td>
+      <td data-label="Last 7 days">{{memberCell .Week}}</td>
+      <td data-label="Last 30 days">{{memberCell .Month}}</td>
+    </tr>
+    {{- end}}
+    </tbody>
+  </table>
+</div>
+{{- else if not .MemberErr}}
+<div class="empty">
+  <p class="big">No member keys yet</p>
+  <p>This team hasn't issued a key to a member. Keys issued on the <a href="/team/{{.Token}}/members">Member keys</a> page are counted here.</p>
+</div>
+{{- end}}
+
 </div></body></html>
 `
 
+// memberCell is one member key's cell: what it used over the period, or a
+// dash when it used nothing there. A period whose read failed is a dash too:
+// a zero would be a figure nobody read.
+func memberCell(s SpendTotals) string {
+	if !s.Read || !s.Used() {
+		return "—"
+	}
+	return itoa(s.Calls) + " · " + fmtTokens(int64(s.Tokens())) + " tokens · " + fmtCost(s.Cost)
+}
+
 // connectHTML is /team/<token>/connect: what a member needs to reach the
 // team's pool, and how to tell it worked.
-//
-// The page carries a secret when ops mounted the key, so it behaves as the
-// rest do: no script, nothing loaded from anywhere, no-referrer. The key is
-// printed as text in a block a member copies — never in an address, a query
-// string or a link, where it would travel on and be kept.
 var connectHTML = `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
