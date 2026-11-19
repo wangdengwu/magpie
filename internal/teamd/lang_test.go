@@ -325,16 +325,6 @@ func wordKeysIn(src string) []string {
 	return out
 }
 
-// englishSentences are the English list's sentences, for a test that says
-// how many of them there are.
-func englishSentences() []string {
-	out := make([]string, 0, len(enWords))
-	for _, s := range enWords {
-		out = append(out, s)
-	}
-	return out
-}
-
 // TestALinkThatOpensNothingIsSaidInBothLanguages: a 404 says the same thing
 // in either language, and says nothing about why — the boundary's answer for
 // a token that names no team is the same for a wrong one and a guessed one.
