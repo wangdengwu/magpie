@@ -196,6 +196,8 @@ h2.sect:first-of-type { margin-top:0 }
 .log td.mark .chip { display:inline-flex }
 .log td { padding:6px 10px 6px 0; border-bottom:1px solid var(--line-2); vertical-align:top }
 .log tr:last-child td { border-bottom:none }
+/* the members' block adds every member up under their rows */
+.log tfoot td { border-top:1px solid var(--line); border-bottom:none; font-weight:600 }
 .log .when { white-space:nowrap }
 .log .muted { color:var(--muted) }
 .log tr.refused td { color:var(--red) }
@@ -626,7 +628,7 @@ var usageHTML = `<!doctype html>
     <thead><tr><th>{{T "usage.member.member"}}</th>{{range .MemberPeriods}}<th>{{T .Key}}</th>{{end}}</tr></thead>
     <tbody>
     {{- range .Members}}
-    <tr>
+    <tr{{if .Revoked}} class="muted"{{end}}>
       <td data-label="{{T "usage.member.member"}}"><span class="sel">{{.Name}}</span>{{if .Revoked}} <span class="chip off">{{T "usage.member.revoked"}}</span>{{end}}</td>
       <td data-label="{{T "usage.member.today"}}">{{memberCell .Today}}</td>
       <td data-label="{{T "usage.member.week"}}">{{memberCell .Week}}</td>
@@ -634,6 +636,14 @@ var usageHTML = `<!doctype html>
     </tr>
     {{- end}}
     </tbody>
+    <tfoot>
+    <tr>
+      <td data-label="{{T "usage.member.member"}}"><span class="sel">{{T "usage.member.total"}}</span></td>
+      <td data-label="{{T "usage.member.today"}}">{{memberCell .MemberTotals.Today}}</td>
+      <td data-label="{{T "usage.member.week"}}">{{memberCell .MemberTotals.Week}}</td>
+      <td data-label="{{T "usage.member.month"}}">{{memberCell .MemberTotals.Month}}</td>
+    </tr>
+    </tfoot>
   </table>
 </div>
 {{- else if not .MemberErr}}

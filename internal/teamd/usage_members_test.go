@@ -63,6 +63,13 @@ func TestUsagePageShowsWhatEachMemberKeyUsed(t *testing.T) {
 			t.Errorf("the page doesn't say %q:\n%s", want, body)
 		}
 	}
+	// every member added up under their rows: 4000+900+100 in, 400+90+10 out
+	if !strings.Contains(body, "All members") {
+		t.Errorf("the block doesn't add the members up:\n%s", body)
+	}
+	if !strings.Contains(body, "51 · 5.5k tokens · $5.00") {
+		t.Errorf("the block's total isn't every member's week added up:\n%s", body)
+	}
 	// the member who used most over the week first
 	if i, j := strings.Index(body, "Alice"), strings.Index(body, "Departed"); i < 0 || j < 0 || i > j {
 		t.Errorf("the rows aren't ranked by the week's tokens:\n%s", body)

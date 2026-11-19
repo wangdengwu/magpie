@@ -119,6 +119,10 @@ type Usage struct {
 	// were. A failed read is said, never drawn as zeros.
 	Members   []MemberUse
 	MemberErr string
+	// MemberTotals are all of them together, which is the same figure the
+	// team key's own spend carries — a lead comparing the two is asking
+	// whether the members are the team's whole spend.
+	MemberTotals MemberTotals
 	// MemberPeriods are the three columns, which the page draws from here
 	// rather than naming them in its markup: the periods and their words
 	// are one list.
@@ -154,6 +158,13 @@ func (s SpendTotals) Tokens() int { return s.Input + s.Output }
 
 // Used says the key did anything at all in the period.
 func (s SpendTotals) Used() bool { return s.Calls > 0 || s.Tokens() > 0 }
+
+// MemberTotals is every member key's spend added up, over the three periods.
+type MemberTotals struct {
+	Today SpendTotals
+	Week  SpendTotals
+	Month SpendTotals
+}
 
 // memberPeriod is one of the three windows the page shows: magpie's period,
 // and the word key its column's head is said with.
@@ -268,7 +279,7 @@ func (s *Server) UsageFor(ctx context.Context, g Grant, t trans) (Usage, error) 
 		}
 		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 	})
-	page.Members, page.MemberErr = s.memberUsage(ctx, t, g)
+	page.Members, page.MemberTotals, page.MemberErr = s.memberUsage(ctx, t, g)
 	return page, nil
 }
 
@@ -283,13 +294,13 @@ func (s *Server) UsageFor(ctx context.Context, g Grant, t trans) (Usage, error) 
 // One period failing does not blank the others: each column says it couldn't
 // be read, and the block says which. A read that fails is unknown, never
 // zero.
-func (s *Server) memberUsage(ctx context.Context, t trans, g Grant) ([]MemberUse, string) {
+func (s *Server) memberUsage(ctx context.Context, t trans, g Grant) ([]MemberUse, MemberTotals, string) {
 	issued, err := s.admin.MemberKeys(ctx, g.Team().KeyID)
 	if err != nil {
-		return nil, t.T("usage.member.keys_err")
+		return nil, MemberTotals{}, t.T("usage.member.keys_err")
 	}
 	if len(issued) == 0 {
-		return nil, ""
+		return nil, MemberTotals{}, ""
 	}
 	type periodAnswer struct {
 		usage IssuerUsage
@@ -315,6 +326,7 @@ func (s *Server) memberUsage(ctx context.Context, t trans, g Grant) ([]MemberUse
 		}
 		return r
 	}
+	var totals MemberTotals
 	failed := ""
 	for i, p := range memberPeriods {
 		a := answers[i]
@@ -325,6 +337,15 @@ func (s *Server) memberUsage(ctx context.Context, t trans, g Grant) ([]MemberUse
 				failed += ", " + t.T(p.Key)
 			}
 			continue
+		}
+		spend := SpendTotals{Calls: a.usage.Total.Calls, Input: a.usage.Total.Input, Output: a.usage.Total.Output, Cost: a.usage.Total.Cost, Read: true}
+		switch p.Period {
+		case "today":
+			totals.Today = spend
+		case "7d":
+			totals.Week = spend
+		case "30d":
+			totals.Month = spend
 		}
 		for _, k := range a.usage.Keys {
 			r := row(k.KeyID)
@@ -375,7 +396,7 @@ func (s *Server) memberUsage(ctx context.Context, t trans, g Grant) ([]MemberUse
 	if failed != "" {
 		why = t.T("usage.member.err", argsOf{"Periods": failed})
 	}
-	return out, why
+	return out, totals, why
 }
 
 // narrowest is the share of the account's most-used window: the one that
