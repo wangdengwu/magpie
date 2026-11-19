@@ -115,9 +115,6 @@ type trans struct {
 	en   words // English's, which every lookup ends at
 }
 
-// langOf is the language, for the page's view.
-func (t trans) Lang() lang { return t.lang }
-
 // HTML is the language's tag for the page's <html lang>, which is what a
 // browser reads a page's language for from: its spell check, its
 // hyphenation, and a screen reader's voice.
