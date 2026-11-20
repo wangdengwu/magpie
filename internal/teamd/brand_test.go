@@ -119,3 +119,47 @@ func TestAnIconThatIsntOneStopsTheStart(t *testing.T) {
 		t.Error("teamd started with an icon file that isn't an image")
 	}
 }
+
+// TestTheIconKeepsItsShape: what is set is the icon's height, never its
+// width. The portal takes whatever image ops names, and a wordmark is wide
+// where an icon is square: a fixed width would stretch either.
+func TestTheIconKeepsItsShape(t *testing.T) {
+	for _, rule := range []string{".head img.brand {", ".said img.brand {"} {
+		i := strings.Index(pageStyle, rule)
+		if i < 0 {
+			t.Fatalf("the icon's rule %q is gone", rule)
+		}
+		body := pageStyle[i : strings.Index(pageStyle[i:], "}")+i]
+		if !strings.Contains(body, "height:") || !strings.Contains(body, "width:auto") {
+			t.Errorf("the icon's rule is %q: it must set a height and leave the width to the image", body)
+		}
+		// max-width is the cap a wordmark may reach; a plain width is the
+		// one that stretches it
+		if withoutMax := strings.ReplaceAll(body, "max-width", "maxwidth"); regexp.MustCompile(`\bwidth:\s*\d`).MatchString(withoutMax) {
+			t.Errorf("the icon's rule is %q: a fixed width stretches a wordmark", body)
+		}
+	}
+}
+
+// TestADarkMarkOnADarkPageGetsALightPlate: a mark drawn in its owner's dark
+// colour is 1.4:1 on this page's dark ground — Weee!'s dark blue on
+// #1a1a1e — which is past reading. The colour is not the page's to change,
+// so the mark gets a white plate there, and the light mode is untouched.
+func TestADarkMarkOnADarkPageGetsALightPlate(t *testing.T) {
+	i := strings.Index(pageStyle, "@media (prefers-color-scheme: dark) {\n  .head img.brand")
+	if i < 0 {
+		t.Fatal("the icon has no plate in dark mode")
+	}
+	block := pageStyle[i : strings.Index(pageStyle[i:], "\n}")+i]
+	for _, want := range []string{"background:#fff", "padding:", "box-sizing:content-box", ".said img.brand"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the dark-mode plate doesn't say %q:\n%s", want, block)
+		}
+	}
+	// and the light mode still sets no ground at all
+	light := pageStyle[strings.Index(pageStyle, ".head img.brand {"):]
+	light = light[:strings.Index(light, "}")]
+	if strings.Contains(light, "background") {
+		t.Errorf("the light mode gives the mark a ground it doesn't need: %q", light)
+	}
+}
