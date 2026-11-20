@@ -30,8 +30,8 @@ func TestAddRecordsATeamMagpieHas(t *testing.T) {
 	if team.TokenHash != "" {
 		t.Error("a team made without a token already holds one")
 	}
-	if !team.CreatedAt.Equal(f.ops().now()) {
-		t.Errorf("the team was made at %v, want the clock %v", team.CreatedAt, f.ops().now())
+	if !team.CreatedAt.Equal(opsClock) {
+		t.Errorf("the team was made at %v, want the clock %v", team.CreatedAt, opsClock)
 	}
 	onDisk := f.teamsOnDisk(t)
 	if len(onDisk) != 3 {
@@ -259,36 +259,6 @@ func TestRemoveNeedsForceWhenItCannotSeeMagpie(t *testing.T) {
 	}
 }
 
-// TestTeamIDMakesAnIDFromAName: the id a team goes by is its name in lower
-// case, with everything else turned into one dash.
-func TestTeamIDMakesAnIDFromAName(t *testing.T) {
-	for name, want := range map[string]string{
-		"Team A":            "team-a",
-		"team-a":            "team-a",
-		"  Payments  Team ": "payments-team",
-		"Core/Platform":     "core-platform",
-		"R&D (2026)":        "r-d-2026",
-		"x":                 "x",
-	} {
-		got, err := teamID(name)
-		if err != nil {
-			t.Errorf("%q was refused: %v", name, err)
-			continue
-		}
-		if got != want {
-			t.Errorf("%q makes the id %q, want %q", name, got, want)
-		}
-	}
-	for _, name := range []string{"", "   ", "团队", "!!!"} {
-		if _, err := teamID(name); err == nil {
-			t.Errorf("%q was given an id", name)
-		}
-	}
-	if long, err := teamID(strings.Repeat("a", 80)); err != nil || len(long) > 40 {
-		t.Errorf("a long name makes the id %q (%v), want at most 40 characters", long, err)
-	}
-}
-
 // A key that manages magpie is never a team's: it could change every team,
 // and a team's key must reach its own accounts only.
 func TestAddRefusesAKeyThatManagesMagpie(t *testing.T) {
@@ -333,7 +303,7 @@ func TestAddHoldsTheKeyToItsGroup(t *testing.T) {
 			}
 			// and the key magpie keeps now names the group, which is what
 			// makes the boundary real on the next request
-			if !holdsGroup(f.magpie.keys[2].Accounts, groupC) {
+			if !slices.Contains(f.magpie.keys[2].Accounts, "@"+groupC) {
 				t.Errorf("the key's accounts are %v, which don't name the group", f.magpie.keys[2].Accounts)
 			}
 			if got := len(f.teamsOnDisk(t)); got != 3 {

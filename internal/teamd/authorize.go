@@ -75,14 +75,3 @@ func (s *Server) teamOf(token string) (Team, error) {
 	}
 	return found, nil
 }
-
-// findGroup is the group with id, told apart in lower case as magpie tells
-// group ids apart.
-func findGroup(groups []Group, id string) (Group, bool) {
-	for _, g := range groups {
-		if strings.EqualFold(g.ID, strings.TrimSpace(id)) {
-			return g, true
-		}
-	}
-	return Group{}, false
-}

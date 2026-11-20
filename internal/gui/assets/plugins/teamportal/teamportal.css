@@ -1,0 +1,7 @@
+/* Models › Team portal (plugins/teamportal): the page keeps the width
+   every page of the window keeps, centred on a large screen (app.css's
+   body.window :is(#view-agents, …) rule, which names the core's pages) */
+body.window #view-teamportal { padding-left: max(16px, calc(50% - 600px)); padding-right: max(0px, calc(max(16px, calc(50% - 600px)) - var(--bar, 0px))); }
+#view-teamportal .row-head { margin: 14px 0 6px; padding: 0 2px; }
+/* a team's key that reaches every account magpie has: a warning */
+#view-teamportal .acc .amodels.tp-wide { color: var(--amber); }

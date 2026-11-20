@@ -1,4 +1,4 @@
-package teamd
+package teamcore
 
 import (
 	"encoding/json"
@@ -17,18 +17,18 @@ import (
 
 // The files teamd keeps, under their state folder.
 const (
-	// teamsFile holds the teams, and the hash of each one's token.
-	teamsFile = "teams.json"
-	// auditFile holds one JSON line per change the portal made or
+	// TeamsFile holds the teams, and the hash of each one's token.
+	TeamsFile = "teams.json"
+	// AuditFile holds one JSON line per change the portal made or
 	// refused, oldest first, and is only ever appended to.
-	auditFile = "audit.jsonl"
-	// auditOld is the one generation kept when audit.jsonl is rotated: the
+	AuditFile = "audit.jsonl"
+	// AuditOld is the one generation kept when audit.jsonl is rotated: the
 	// file before the last rotation. The one before that is dropped, so a
 	// long-lived portal can't fill the volume with history nobody reads.
-	auditOld = "audit.jsonl.1"
-	// lockFile is what the ops commands and a running sidecar take, so a
+	AuditOld = "audit.jsonl.1"
+	// LockFile is what the ops commands and a running sidecar take, so a
 	// change one makes is seen whole by the other.
-	lockFile = "teamd.lock"
+	LockFile = "teamd.lock"
 )
 
 // DefaultAuditMax is how big audit.jsonl may grow before it is rotated.
@@ -44,7 +44,7 @@ const DefaultAuditMax = 4 << 20
 // change makes, which two processes doing at once would lose one of.
 type Store struct {
 	dir string
-	mu  sync.Mutex // this process's writers; lockFile is other processes'
+	mu  sync.Mutex // this process's writers; LockFile is other processes'
 	// max is the size audit.jsonl rotates at, 0 for DefaultAuditMax and
 	// a negative for never.
 	max int64
@@ -69,7 +69,7 @@ func (s *Store) Dir() string { return s.dir }
 // an error and never no teams: every page it feeds is then refused,
 // instead of a team's link quietly opening nothing.
 func (s *Store) Teams() ([]Team, error) {
-	b, err := os.ReadFile(filepath.Join(s.dir, teamsFile))
+	b, err := os.ReadFile(filepath.Join(s.dir, TeamsFile))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -78,7 +78,7 @@ func (s *Store) Teams() ([]Team, error) {
 	}
 	var teams []Team
 	if err := json.Unmarshal(b, &teams); err != nil {
-		return nil, fmt.Errorf("teamd's %s doesn't read: %w", teamsFile, err)
+		return nil, fmt.Errorf("teamd's %s doesn't read: %w", TeamsFile, err)
 	}
 	return teams, nil
 }
@@ -100,7 +100,7 @@ func (s *Store) save(teams []Team) error {
 	if err != nil {
 		return err
 	}
-	return teamdWrite(filepath.Join(s.dir, teamsFile), append(b, '\n'))
+	return teamdWrite(filepath.Join(s.dir, TeamsFile), append(b, '\n'))
 }
 
 // Update changes the teams under the lock both processes share: fn reads
@@ -130,7 +130,7 @@ func (s *Store) Update(fn func([]Team) ([]Team, error)) error {
 // request.
 func (s *Store) hold() func() {
 	s.mu.Lock()
-	unlock, _ := filelock.Lock(filepath.Join(s.dir, lockFile), filelock.Wait)
+	unlock, _ := filelock.Lock(filepath.Join(s.dir, LockFile), filelock.Wait)
 	return func() {
 		unlock()
 		s.mu.Unlock()
@@ -187,12 +187,12 @@ func (s *Store) Audit(e Entry) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	path := filepath.Join(s.dir, auditFile)
+	path := filepath.Join(s.dir, AuditFile)
 	if max := s.auditMax(); max > 0 {
 		if fi, err := os.Stat(path); err == nil && fi.Size()+int64(len(b))+1 > max {
 			// a rotation that fails is not a lost line: the line is still
 			// written, and the file is tried again next time
-			_ = os.Rename(path, filepath.Join(s.dir, auditOld))
+			_ = os.Rename(path, filepath.Join(s.dir, AuditOld))
 		}
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
@@ -238,7 +238,7 @@ func (s *Store) AuditLines(teamID string, n int) (entries []Entry, total int, er
 	// the older generation first: the two files together are oldest-first
 	// only in that order
 	var all []Entry
-	for _, name := range []string{auditOld, auditFile} {
+	for _, name := range []string{AuditOld, AuditFile} {
 		b, err := os.ReadFile(filepath.Join(s.dir, name))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue

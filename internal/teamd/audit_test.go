@@ -226,17 +226,18 @@ func TestTheAuditPageWithNoLines(t *testing.T) {
 // the file turns over.
 func TestTheAuditFileRotates(t *testing.T) {
 	f := newFixture(t)
-	// a small bound, so a handful of lines rotates it
-	f.srv.Store().max = 400
+	// a small bound, so a handful of lines rotates it: a store of its own
+	// over the portal's folder
+	st := storeAt(t, f.srv.Store().Dir(), 400)
 	for i := range 8 {
-		if err := f.srv.Store().Audit(Entry{
+		if err := st.Audit(Entry{
 			At:   time.Date(2026, 11, 19, 10, i, 0, 0, time.UTC),
 			Team: "team-a", Action: actOff, Account: acctA1, Result: ResultOK,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	dir := f.srv.Store().Dir()
+	dir := st.Dir()
 	fi, err := os.Stat(filepath.Join(dir, auditFile))
 	if err != nil {
 		t.Fatal(err)
@@ -248,7 +249,7 @@ func TestTheAuditFileRotates(t *testing.T) {
 		t.Errorf("the file rotated but kept no previous generation: %v", err)
 	}
 	// and what is read is what is left, not a blank
-	entries, total, err := f.srv.Store().AuditLines("team-a", 100)
+	entries, total, err := st.AuditLines("team-a", 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,16 +265,18 @@ func TestTheAuditFileRotates(t *testing.T) {
 // are the last ones, so a rotation drops the oldest.
 func TestRotationKeepsTheNewestLines(t *testing.T) {
 	f := newFixture(t)
-	f.srv.Store().max = 300
+	// a small bound, so a handful of lines rotates it: a store of its own
+	// over the portal's folder
+	st := storeAt(t, f.srv.Store().Dir(), 300)
 	for i := range 10 {
-		if err := f.srv.Store().Audit(Entry{
+		if err := st.Audit(Entry{
 			At:   time.Date(2026, 11, 19, 10, i, 0, 0, time.UTC),
 			Team: "team-a", Action: actOff, Account: "claude/" + itoa(i), Result: ResultOK,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	entries, _, err := f.srv.Store().AuditLines("team-a", 100)
+	entries, _, err := st.AuditLines("team-a", 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,9 +302,11 @@ func TestRotationKeepsTheNewestLines(t *testing.T) {
 // rotation did.
 func TestOneLineIsAlwaysWhole(t *testing.T) {
 	f := newFixture(t)
-	f.srv.Store().max = 250
+	// a small bound, so a handful of lines rotates it: a store of its own
+	// over the portal's folder
+	st := storeAt(t, f.srv.Store().Dir(), 250)
 	for i := range 12 {
-		if err := f.srv.Store().Audit(Entry{
+		if err := st.Audit(Entry{
 			At:   time.Date(2026, 11, 19, 10, i, 0, 0, time.UTC),
 			Team: "team-a", Action: actOff, Account: acctA1,
 			Name: "A name with · and spaces and 中文, which is JSON's job", Result: ResultOK,
@@ -310,7 +315,7 @@ func TestOneLineIsAlwaysWhole(t *testing.T) {
 		}
 	}
 	for _, name := range []string{auditFile, auditOld} {
-		b, err := os.ReadFile(filepath.Join(f.srv.Store().Dir(), name))
+		b, err := os.ReadFile(filepath.Join(st.Dir(), name))
 		if err != nil {
 			continue
 		}
@@ -434,4 +439,14 @@ func TestTheRotationSizeIsConfigurable(t *testing.T) {
 	if s3.AuditMax() != DefaultAuditMax {
 		t.Errorf("a store told nothing answers %d, want the default", s3.AuditMax())
 	}
+}
+
+// storeAt is a store over dir that rotates audit.jsonl at max bytes.
+func storeAt(t *testing.T, dir string, max int64) *Store {
+	t.Helper()
+	s, err := NewStore(dir, max)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }

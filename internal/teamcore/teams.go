@@ -1,4 +1,4 @@
-package teamd
+package teamcore
 
 import (
 	"context"
@@ -33,15 +33,6 @@ type Magpie interface {
 	HoldKeyToGroup(ctx context.Context, keyID, groupID string) error
 }
 
-// NewOps opens the state folder and the admin key, as the portal does.
-func NewOps(cfg Config) (*Ops, error) {
-	store, admin, err := open(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return &Ops{store: store, cat: admin, now: time.Now}, nil
-}
-
 // Groups and Keys are what magpie has now, as ops reads them.
 func (o *Ops) Groups(ctx context.Context) ([]Group, error)    { return o.cat.AccountGroups(ctx) }
 func (o *Ops) Keys(ctx context.Context) ([]GatewayKey, error) { return o.cat.GatewayKeys(ctx) }
@@ -50,6 +41,12 @@ func (o *Ops) Keys(ctx context.Context) ([]GatewayKey, error) { return o.cat.Gat
 // magpie in process rather than over the management API.
 func NewOpsWith(store *Store, cat Magpie) *Ops {
 	return &Ops{store: store, cat: cat, now: time.Now}
+}
+
+// NewOpsAt is NewOpsWith on a clock of the caller's: a team's CreatedAt and
+// a token's RotatedAt are read from it.
+func NewOpsAt(store *Store, cat Magpie, now func() time.Time) *Ops {
+	return &Ops{store: store, cat: cat, now: now}
 }
 
 // NewTeam is what ops gives `teams add`: the name the team goes by, and the
@@ -80,7 +77,7 @@ func (o *Ops) Add(ctx context.Context, in NewTeam) (Team, error) {
 	if err != nil {
 		return Team{}, err
 	}
-	group, ok := findGroup(groups, in.GroupID)
+	group, ok := FindGroup(groups, in.GroupID)
 	if !ok {
 		return Team{}, fmt.Errorf("magpie has no account group %q: make it first, with `magpie gateway-key groups` or the app", in.GroupID)
 	}
@@ -125,7 +122,7 @@ func (o *Ops) Add(ctx context.Context, in NewTeam) (Team, error) {
 	//
 	// A key already held to the group is left as it is: it may name other
 	// accounts of its own, which that team's ops meant to allow.
-	if !holdsGroup(keys[ki].Accounts, group.ID) {
+	if !HoldsGroup(keys[ki].Accounts, group.ID) {
 		if err := o.cat.HoldKeyToGroup(ctx, keys[ki].ID, group.ID); err != nil {
 			return Team{}, fmt.Errorf("the team's key couldn't be held to its account group %s: %w", group.ID, err)
 		}
@@ -183,13 +180,44 @@ func (o *Ops) List(ctx context.Context) ([]Row, error) {
 	for _, t := range teams {
 		row := Row{Team: t}
 		if groupsErr == nil {
-			if g, ok := findGroup(groups, t.GroupID); ok {
+			if g, ok := FindGroup(groups, t.GroupID); ok {
 				row.Accounts, row.Known = len(g.Accounts), true
 			}
 		}
 		rows = append(rows, row)
 	}
 	return rows, nil
+}
+
+// Hold holds team id's key to its account group, as Add does for a team
+// it makes: for a team made before Add did, whose key may still reach every
+// account magpie has. A key that names the group already is left as it is.
+func (o *Ops) Hold(ctx context.Context, id string) (Team, error) {
+	teams, err := o.store.Teams()
+	if err != nil {
+		return Team{}, err
+	}
+	i := slices.IndexFunc(teams, func(t Team) bool { return strings.EqualFold(t.ID, strings.TrimSpace(id)) })
+	if i < 0 {
+		return Team{}, fmt.Errorf("there is no team %q", id)
+	}
+	team := teams[i]
+	keys, err := o.cat.GatewayKeys(ctx)
+	if err != nil {
+		return Team{}, err
+	}
+	ki := slices.IndexFunc(keys, func(k GatewayKey) bool { return strings.EqualFold(k.ID, team.KeyID) })
+	if ki < 0 {
+		return Team{}, fmt.Errorf("magpie has no gateway key %s, team %q's", team.KeyID, team.ID)
+	}
+	if HoldsGroup(keys[ki].Accounts, team.GroupID) {
+		return team, nil
+	}
+	if err := o.cat.HoldKeyToGroup(ctx, team.KeyID, team.GroupID); err != nil {
+		return Team{}, fmt.Errorf("the team's key couldn't be held to its account group %s: %w", team.GroupID, err)
+	}
+	_ = o.store.Audit(Entry{Team: team.ID, Action: "team-hold", Who: OpsWho, Result: ResultOK})
+	return team, nil
 }
 
 // Token issues a team a new token, or replaces the one it had, and answers
@@ -252,7 +280,7 @@ func (o *Ops) Remove(ctx context.Context, id string, force bool) (Removed, error
 	out := Removed{Team: teams[i]}
 	groups, groupsErr := o.cat.AccountGroups(ctx)
 	if groupsErr == nil {
-		out.Group, out.Read = findGroup(groups, out.Team.GroupID)
+		out.Group, out.Read = FindGroup(groups, out.Team.GroupID)
 	}
 	if !force {
 		switch {
@@ -278,12 +306,12 @@ func (o *Ops) Remove(ctx context.Context, id string, force bool) (Removed, error
 	return out, nil
 }
 
-// holdsGroup says a key's accounts list names the group id, as "@<id>",
+// HoldsGroup says a key's accounts list names the group id, as "@<id>",
 // which is what holds the key to the group's accounts and no others. A
 // "!@<id>" is the group kept out, the opposite, so it doesn't count. An
 // empty list names nothing, and such a key reaches every account magpie
 // has — the reason a team's key is checked for this at all.
-func holdsGroup(accounts []string, id string) bool {
+func HoldsGroup(accounts []string, id string) bool {
 	want := "@" + strings.TrimSpace(id)
 	for _, a := range accounts {
 		if strings.EqualFold(strings.TrimSpace(a), want) {

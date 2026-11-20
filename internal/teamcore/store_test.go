@@ -1,4 +1,4 @@
-package teamd
+package teamcore
 
 import (
 	"encoding/json"
@@ -8,6 +8,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+)
+
+// two account group ids, of the shape magpie makes
+const (
+	groupA = "6f1c2a9d4b70"
+	groupB = "b3d8e04c17a2"
 )
 
 // TestTeamsRoundTrip: what is saved is what is read back, in the shape
@@ -61,15 +67,15 @@ func TestTeamsKeepsNoToken(t *testing.T) {
 	if err := s.Save([]Team{{ID: "team-a", Name: "Team A", GroupID: groupA, TokenHash: hash}}); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(filepath.Join(dir, teamsFile))
+	b, err := os.ReadFile(filepath.Join(dir, TeamsFile))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(b), token) {
-		t.Fatalf("%s holds the team's token:\n%s", teamsFile, b)
+		t.Fatalf("%s holds the team's token:\n%s", TeamsFile, b)
 	}
 	if !strings.Contains(string(b), hash) {
-		t.Errorf("%s doesn't hold the token's hash:\n%s", teamsFile, b)
+		t.Errorf("%s doesn't hold the token's hash:\n%s", TeamsFile, b)
 	}
 	// a token of another team's must not be readable out of it either
 	other, _, err := NewToken()
@@ -95,7 +101,7 @@ func TestFilesAreNotWorldReadable(t *testing.T) {
 	if err := s.Audit(Entry{Team: "team-a", Action: "add", Result: "ok"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{teamsFile, auditFile} {
+	for _, name := range []string{TeamsFile, AuditFile} {
 		fi, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
 			t.Fatal(err)
@@ -114,11 +120,11 @@ func TestTeamsUnreadableIsAnError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, teamsFile), []byte("{not json"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, TeamsFile), []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := s.Teams(); err == nil {
-		t.Fatalf("a %s that doesn't parse read as %d teams, want an error", teamsFile, len(got))
+		t.Fatalf("a %s that doesn't parse read as %d teams, want an error", TeamsFile, len(got))
 	}
 }
 
@@ -131,10 +137,10 @@ func TestNoTeamsFileIsNoTeams(t *testing.T) {
 	}
 	teams, err := s.Teams()
 	if err != nil {
-		t.Fatalf("a missing %s read as an error: %v", teamsFile, err)
+		t.Fatalf("a missing %s read as an error: %v", TeamsFile, err)
 	}
 	if len(teams) != 0 {
-		t.Errorf("a missing %s read as %d teams", teamsFile, len(teams))
+		t.Errorf("a missing %s read as %d teams", TeamsFile, len(teams))
 	}
 }
 
@@ -176,7 +182,7 @@ func TestUpdateRefusesAnUnreadableFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	broken := []byte("{not json")
-	path := filepath.Join(dir, teamsFile)
+	path := filepath.Join(dir, TeamsFile)
 	if err := os.WriteFile(path, broken, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +219,7 @@ func TestAuditAppendsOneLineEach(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	b, err := os.ReadFile(filepath.Join(dir, auditFile))
+	b, err := os.ReadFile(filepath.Join(dir, AuditFile))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -56,7 +56,7 @@ import (
 	"github.com/yetone/magpie/internal/sessions"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/settingsapi"
-	"github.com/yetone/magpie/internal/teamd"
+	"github.com/yetone/magpie/internal/teamcore"
 	"github.com/yetone/magpie/internal/update"
 	"github.com/yetone/magpie/internal/usage"
 )
@@ -1219,11 +1219,13 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	}))
 	devRoutes(mux)
 	pluginPageRoutes(mux, isWeb(w))
-	// the team portal's ops page: a team and its link are made here, in
-	// magpie's own process, behind the page's sign-in
-	if store, err := teamd.NewStore(teamdOpsDir(), 0); err == nil {
-		o := opsRoutes(store, guiMagpie{})
-		mux.Handle("/ops/", o)
+	// the Team portal page's routes: a team and its link are made here, in
+	// magpie's own process, behind the page's sign-in; only where a portal
+	// runs beside magpie, so a magpie of one person's makes no folder for it
+	if teamcore.Served() {
+		if store, err := teamcore.NewStore(teamdOpsDir(), 0); err == nil {
+			mux.Handle("/ops/", opsRoutes(store, guiMagpie{}))
+		}
 	}
 	feedbackRoutes(mux)
 	appearanceRoutes(mux)
@@ -1299,6 +1301,11 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// before the first paint rather than after the settings come
 		list := builtinsState()
 		boot["featuresOff"] = builtinsOff(list)
+		// and whether a team portal runs beside it, which the Team portal
+		// page's sidebar entry is drawn for (plugins/teamportal)
+		if teamcore.Served() {
+			boot["teamPortal"] = true
+		}
 		// and where the gateway listens, so the sidebar's line at its foot
 		// is drawn from the start, not held back until providers has come
 		// in (#1519's read waits for the agents); only this process's own,

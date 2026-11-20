@@ -18,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/teamcore"
 )
 
 // testAdminKey is the "admin local" gateway key teamd holds. Never a real
@@ -198,7 +200,7 @@ func newFakeMagpie(t *testing.T, groups []Group) *fakeMagpie {
 			// has to draw: a request passes only while both have room.
 			// Each key names its team's group, as a real one must: a key
 			// that names no account reaches every account magpie has, and
-			// Ops.Add refuses it (holdsGroup).
+			// Ops.Add holds it to its group (HoldsGroup).
 			{ID: keyA, Name: "team-a", Issues: true, Accounts: []string{"@" + groupA}, Limit: &Limit{Period: "day", Tokens: 2_000_000}, MoreLimits: []Limit{{Period: "hours", Hours: 5, Cost: 5}},
 				UsedAll: []LimitUse{
 					{Period: "day", Calls: 41, Tokens: 1_250_000, TokenLimit: 2_000_000, TokensLeft: 750_000,
@@ -543,12 +545,11 @@ func setModelName(t *testing.T, f *fixture, id, name string) {
 // ops is the commands' side of the same fixture: the same state folder and
 // the same magpie the portal reads, on a clock the test sets.
 func (f *fixture) ops() *Ops {
-	return &Ops{
-		store: f.srv.Store(),
-		cat:   f.magpie,
-		now:   func() time.Time { return time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC) },
-	}
+	return teamcore.NewOpsAt(f.srv.Store(), f.magpie, func() time.Time { return opsClock })
 }
+
+// opsClock is the time ops' commands read in a test.
+var opsClock = time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)
 
 // pastesTaken and canceledIDs are what magpie was told, read under its lock.
 func (f *fakeMagpie) pastesTaken() []string {
