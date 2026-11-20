@@ -149,6 +149,12 @@ type GatewayKey struct {
 	MoreLimits []Limit    `json:"moreLimits,omitempty"`
 	Used       *LimitUse  `json:"used,omitempty"`
 	UsedAll    []LimitUse `json:"usedAll,omitempty"`
+	// Accounts are what the key is held to (access.Key.Accounts):
+	// "<provider>/<account>", "<provider>/!<account>" to keep one out, and
+	// "@<group>" or "!@<group>" to name an account group. None holds the
+	// key to nothing, which is every account magpie has — the opposite of
+	// what it looks like, and why a team's key is checked for its group.
+	Accounts []string `json:"accounts,omitempty"`
 	// Issues says the key may issue keys under itself, which is what lets
 	// the members page issue a team's keys.
 	Issues bool `json:"issues,omitempty"`

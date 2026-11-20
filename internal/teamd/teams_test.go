@@ -298,3 +298,46 @@ func TestAddRefusesAKeyThatManagesMagpie(t *testing.T) {
 		t.Fatalf("a team was made on a key that manages magpie: %v", err)
 	}
 }
+
+// TestAddRefusesAKeyHeldToNothing: a key whose accounts name nothing
+// reaches every account magpie has, of every provider — so a team on it
+// would draw one group's accounts and spend another's. The portal's
+// boundary is only real when the key names the group too (holdsGroup).
+func TestAddRefusesAKeyHeldToNothing(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		accounts []string
+		ok       bool
+	}{
+		{"no accounts at all", nil, false},
+		{"another group", []string{"@" + groupA}, false},
+		{"its group kept out", []string{"!@" + groupC}, false},
+		{"an account, not the group", []string{"claude/" + acctA1}, false},
+		{"its group", []string{"@" + groupC}, true},
+		{"its group beside another", []string{"@" + groupC, "@" + groupA}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.magpie.keys[2].Accounts = tc.accounts // keyC
+			_, err := f.ops().Add(context.Background(), NewTeam{Name: "Team C", GroupID: groupC, KeyID: keyC})
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("a key held to its group was refused: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("a team was made on a key that reaches every account magpie has")
+			}
+			if !strings.Contains(err.Error(), "not held to the account group") {
+				t.Errorf("the refusal is %q, which doesn't say the key isn't held to the group", err)
+			}
+			if !strings.Contains(err.Error(), "gateway-key accounts") {
+				t.Errorf("the refusal is %q, which doesn't say how to hold it", err)
+			}
+			if got := len(f.teamsOnDisk(t)); got != 2 {
+				t.Errorf("a refused add recorded a team: %d teams, want 2", got)
+			}
+		})
+	}
+}

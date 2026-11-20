@@ -92,6 +92,32 @@ func (o *Ops) Add(ctx context.Context, in NewTeam) (Team, error) {
 	if keys[ki].Admin != "" {
 		return Team{}, fmt.Errorf("the gateway key %q manages magpie, so it can't be a team's: a team's key reaches its own accounts only", in.KeyID)
 	}
+	// Another team's group or key is answered first: which of the two is
+	// wrong is a thing about this team, where a key held to nothing is a
+	// thing about the key, and ops reads the more specific one first.
+	taken, err := o.store.Teams()
+	if err != nil {
+		return Team{}, err
+	}
+	for _, t := range taken {
+		if strings.EqualFold(t.ID, id) {
+			return Team{}, fmt.Errorf("a team %q is here already: take it away with `teamd teams rm %s` first", t.ID, t.ID)
+		}
+		if strings.EqualFold(t.GroupID, group.ID) {
+			return Team{}, fmt.Errorf("the account group %s is team %q's already: one group is one team's", group.ID, t.ID)
+		}
+		if strings.EqualFold(t.KeyID, keys[ki].ID) {
+			return Team{}, fmt.Errorf("the gateway key %s is team %q's already: one key is one team's", keys[ki].ID, t.ID)
+		}
+	}
+	// A key that names no account reaches every account magpie has, every
+	// provider's, whatever group the team holds: the portal would draw one
+	// group and the key would spend all of them. The group has to be in the
+	// key's own accounts list — "@<group id>" — for the team's boundary to
+	// be the key's too.
+	if !holdsGroup(keys[ki].Accounts, group.ID) {
+		return Team{}, fmt.Errorf("the gateway key %q is not held to the account group %s: it reaches every account magpie has, not this team's. Hold it first: `magpie gateway-key accounts %s @%s`", in.KeyID, group.ID, keys[ki].ID, group.ID)
+	}
 	made := Team{
 		ID:        id,
 		Name:      name,
@@ -99,6 +125,8 @@ func (o *Ops) Add(ctx context.Context, in NewTeam) (Team, error) {
 		KeyID:     keys[ki].ID,
 		CreatedAt: o.now().UTC(),
 	}
+	// the write below takes the lock and checks all three again: this read
+	// is only so the more specific refusal is the one ops sees
 	err = o.store.Update(func(teams []Team) ([]Team, error) {
 		for _, t := range teams {
 			if strings.EqualFold(t.ID, made.ID) {
@@ -236,6 +264,21 @@ func (o *Ops) Remove(ctx context.Context, id string, force bool) (Removed, error
 	}
 	_ = o.store.Audit(Entry{Team: out.Team.ID, Action: "team-rm", Who: OpsWho, Result: "ok"})
 	return out, nil
+}
+
+// holdsGroup says a key's accounts list names the group id, as "@<id>",
+// which is what holds the key to the group's accounts and no others. A
+// "!@<id>" is the group kept out, the opposite, so it doesn't count. An
+// empty list names nothing, and such a key reaches every account magpie
+// has — the reason a team's key is checked for this at all.
+func holdsGroup(accounts []string, id string) bool {
+	want := "@" + strings.TrimSpace(id)
+	for _, a := range accounts {
+		if strings.EqualFold(strings.TrimSpace(a), want) {
+			return true
+		}
+	}
+	return false
 }
 
 // teamID is the id a team goes by in a link and on a command line: its

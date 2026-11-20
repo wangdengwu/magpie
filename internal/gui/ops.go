@@ -45,7 +45,10 @@ func (guiMagpie) GatewayKeys(context.Context) ([]teamd.GatewayKey, error) {
 	}
 	out := make([]teamd.GatewayKey, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, teamd.GatewayKey{ID: k.ID, Name: k.Name, Off: k.Off, Issues: k.Issues, Admin: k.Admin})
+		// Accounts travels with the key: Ops.Add reads it to refuse a key
+		// held to nothing, which without it looks like every key (a field
+		// left out here is the check reading an empty list).
+		out = append(out, teamd.GatewayKey{ID: k.ID, Name: k.Name, Off: k.Off, Accounts: k.Accounts, Issues: k.Issues, Admin: k.Admin})
 	}
 	return out, nil
 }

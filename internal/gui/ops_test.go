@@ -60,6 +60,11 @@ func TestOpsPageAddsATeamAndGivesItsLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	keyID := keys[len(keys)-1].ID
+	// the key names the group, as a team's key must (teamd's Ops.Add): one
+	// that names no account reaches every account this magpie has
+	if _, err := access.Update("accounts-key", access.Change{Key: keyID, Accounts: []string{"@" + g.ID}}); err != nil {
+		t.Fatal(err)
+	}
 
 	page := opsDo(t, h, "GET", "/ops/teams", nil)
 	if page.Code != http.StatusOK {
@@ -108,9 +113,15 @@ func TestOpsPageRemovesATeam(t *testing.T) {
 	}
 	keys, _ := access.List()
 	keyID := keys[len(keys)-1].ID
+	if _, err := access.Update("accounts-key", access.Change{Key: keyID, Accounts: []string{"@" + g.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	// the page answers 200 for a refused add too, with the reason drawn, so
+	// the answer is read for it: a code check alone passes an add that made
+	// no team
 	if rec := opsDo(t, h, "POST", "/ops/teams/add", url.Values{
 		"name": {"team-a"}, "group": {g.ID}, "key": {keyID},
-	}); rec.Code != http.StatusOK {
+	}); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `class="bad"`) {
 		t.Fatalf("adding answered %d: %s", rec.Code, rec.Body.String())
 	}
 	rec := opsDo(t, h, "POST", "/ops/teams/remove", url.Values{"id": {"team-a"}, "force": {"1"}})
@@ -119,6 +130,50 @@ func TestOpsPageRemovesATeam(t *testing.T) {
 	}
 	if list := opsDo(t, h, "GET", "/ops/teams", nil).Body.String(); strings.Contains(list, "<td>team-a</td>") {
 		t.Fatalf("the team is still listed:\n%s", list)
+	}
+}
+
+// TestOpsPageRefusesAKeyHeldToNothing: the ops page makes no team on a key
+// that names no account, and says why. The page reads magpie's keys through
+// its own conversion (guiMagpie.GatewayKeys), so this also says that
+// conversion carries the accounts: a field dropped there reads as every
+// key held to nothing, and the page would refuse every key.
+func TestOpsPageRefusesAKeyHeldToNothing(t *testing.T) {
+	h := opsPage(t)
+	g, err := access.SaveAccountGroup(access.AccountGroup{Name: "team-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := access.Update("add-key", access.Change{Name: "team-a-key"}); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := access.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyID := keys[len(keys)-1].ID
+
+	rec := opsDo(t, h, "POST", "/ops/teams/add", url.Values{
+		"name": {"team-a"}, "group": {g.ID}, "key": {keyID},
+	})
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="bad"`) || !strings.Contains(body, "not held to the account group") {
+		t.Fatalf("a key that reaches every account made a team, or the page doesn't say why:\n%s", body)
+	}
+	if strings.Contains(body, "/team/") {
+		t.Errorf("a refused add still answered a link:\n%s", body)
+	}
+
+	// held to its group, the same key makes the team: the refusal is about
+	// the key's accounts, not about every key
+	if _, err := access.Update("accounts-key", access.Change{Key: keyID, Accounts: []string{"@" + g.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	rec = opsDo(t, h, "POST", "/ops/teams/add", url.Values{
+		"name": {"team-a"}, "group": {g.ID}, "key": {keyID},
+	})
+	if body := rec.Body.String(); strings.Contains(body, `class="bad"`) {
+		t.Fatalf("a key held to its group was refused too:\n%s", body)
 	}
 }
 

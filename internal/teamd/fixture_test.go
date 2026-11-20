@@ -183,16 +183,19 @@ func newFakeMagpie(t *testing.T, groups []Group) *fakeMagpie {
 		keys: []GatewayKey{
 			// team A's key has two caps, which is the case the usage page
 			// has to draw: a request passes only while both have room.
-			{ID: keyA, Name: "team-a", Issues: true, Limit: &Limit{Period: "day", Tokens: 2_000_000}, MoreLimits: []Limit{{Period: "hours", Hours: 5, Cost: 5}},
+			// Each key names its team's group, as a real one must: a key
+			// that names no account reaches every account magpie has, and
+			// Ops.Add refuses it (holdsGroup).
+			{ID: keyA, Name: "team-a", Issues: true, Accounts: []string{"@" + groupA}, Limit: &Limit{Period: "day", Tokens: 2_000_000}, MoreLimits: []Limit{{Period: "hours", Hours: 5, Cost: 5}},
 				UsedAll: []LimitUse{
 					{Period: "day", Calls: 41, Tokens: 1_250_000, TokenLimit: 2_000_000, TokensLeft: 750_000,
 						Start: time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC), Reset: time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC)},
 					{Period: "hours", Hours: 5, Calls: 41, Cost: 1.25, CostLimit: 5, CostLeft: 3.75,
 						Start: time.Date(2026, 11, 18, 9, 0, 0, 0, time.UTC), Reset: time.Date(2026, 11, 18, 14, 0, 0, 0, time.UTC)},
 				}},
-			{ID: keyB, Name: "team-b"},
-			{ID: keyC, Name: "team-c"},
-			{ID: keyOff, Name: "old", Off: true},
+			{ID: keyB, Name: "team-b", Accounts: []string{"@" + groupB}},
+			{ID: keyC, Name: "team-c", Accounts: []string{"@" + groupC}},
+			{ID: keyOff, Name: "old", Off: true, Accounts: []string{"@" + groupC}},
 		},
 		models:    claudeModels(),
 		usage:     claudeUsage(),
