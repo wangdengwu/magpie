@@ -3,6 +3,7 @@ package teamd
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -299,45 +300,61 @@ func TestAddRefusesAKeyThatManagesMagpie(t *testing.T) {
 	}
 }
 
-// TestAddRefusesAKeyHeldToNothing: a key whose accounts name nothing
+// TestAddHoldsTheKeyToItsGroup: a key that doesn't name the team's group
 // reaches every account magpie has, of every provider — so a team on it
-// would draw one group's accounts and spend another's. The portal's
-// boundary is only real when the key names the group too (holdsGroup).
-func TestAddRefusesAKeyHeldToNothing(t *testing.T) {
+// would draw one group's accounts and spend another's. Add puts the group
+// on the key, so a team made from the page is held as the portal draws it,
+// and ops never has to run a command to make the boundary real.
+func TestAddHoldsTheKeyToItsGroup(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		accounts []string
-		ok       bool
+		held     bool // Add has to write the key
 	}{
-		{"no accounts at all", nil, false},
-		{"another group", []string{"@" + groupA}, false},
-		{"its group kept out", []string{"!@" + groupC}, false},
-		{"an account, not the group", []string{"claude/" + acctA1}, false},
-		{"its group", []string{"@" + groupC}, true},
-		{"its group beside another", []string{"@" + groupC, "@" + groupA}, true},
+		{"no accounts at all", nil, true},
+		{"another group", []string{"@" + groupA}, true},
+		{"its group kept out", []string{"!@" + groupC}, true},
+		{"an account, not the group", []string{"claude/" + acctA1}, true},
+		{"its group", []string{"@" + groupC}, false},
+		{"its group beside another", []string{"@" + groupC, "@" + groupA}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
 			f.magpie.keys[2].Accounts = tc.accounts // keyC
-			_, err := f.ops().Add(context.Background(), NewTeam{Name: "Team C", GroupID: groupC, KeyID: keyC})
-			if tc.ok {
-				if err != nil {
-					t.Fatalf("a key held to its group was refused: %v", err)
-				}
-				return
+			if _, err := f.ops().Add(context.Background(), NewTeam{Name: "Team C", GroupID: groupC, KeyID: keyC}); err != nil {
+				t.Fatalf("the team wasn't made: %v", err)
 			}
-			if err == nil {
-				t.Fatal("a team was made on a key that reaches every account magpie has")
+			want := []string{}
+			if tc.held {
+				want = []string{keyC + "@" + groupC}
 			}
-			if !strings.Contains(err.Error(), "not held to the account group") {
-				t.Errorf("the refusal is %q, which doesn't say the key isn't held to the group", err)
+			if got := f.magpie.heldKeys(); !slices.Equal(got, want) {
+				t.Errorf("Add held %v, want %v", got, want)
 			}
-			if !strings.Contains(err.Error(), "gateway-key accounts") {
-				t.Errorf("the refusal is %q, which doesn't say how to hold it", err)
+			// and the key magpie keeps now names the group, which is what
+			// makes the boundary real on the next request
+			if !holdsGroup(f.magpie.keys[2].Accounts, groupC) {
+				t.Errorf("the key's accounts are %v, which don't name the group", f.magpie.keys[2].Accounts)
 			}
-			if got := len(f.teamsOnDisk(t)); got != 2 {
-				t.Errorf("a refused add recorded a team: %d teams, want 2", got)
+			if got := len(f.teamsOnDisk(t)); got != 3 {
+				t.Errorf("teams.json holds %d teams, want 3", got)
 			}
 		})
+	}
+}
+
+// TestAddRecordsNoTeamWhenTheKeyCantBeHeld: a write that fails stops the
+// team from being made. A team whose key reaches every account of magpie
+// is the one thing the portal must never draw, so nothing is recorded.
+func TestAddRecordsNoTeamWhenTheKeyCantBeHeld(t *testing.T) {
+	f := newFixture(t)
+	f.magpie.keys[2].Accounts = nil // keyC
+	f.magpie.refuseHold = 500
+	_, err := f.ops().Add(context.Background(), NewTeam{Name: "Team C", GroupID: groupC, KeyID: keyC})
+	if err == nil || !strings.Contains(err.Error(), "couldn't be held") {
+		t.Fatalf("a team was made on a key that couldn't be held: %v", err)
+	}
+	if got := len(f.teamsOnDisk(t)); got != 2 {
+		t.Errorf("a failed hold recorded a team: %d teams, want 2", got)
 	}
 }

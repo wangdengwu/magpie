@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,6 +16,38 @@ func adminDo(t *testing.T, method, path, body string) *httptest.ResponseRecorder
 	w := httptest.NewRecorder()
 	serveAdmin(w, httptest.NewRequest(method, path, strings.NewReader(body)))
 	return w
+}
+
+// TestAdminAPIHoldsAKeyToAGroup: the portal holds a team's key to the
+// team's account group through the management API, and the path it uses is
+// the one this mux serves. That path was wrong once, and nothing said so:
+// the portal's own tests answer a fixture, which records what it is asked
+// rather than whether the route exists.
+func TestAdminAPIHoldsAKeyToAGroup(t *testing.T) {
+	sandboxHome(t)
+	secret, err := access.Update("add-key", access.Change{Name: "team-a-key"})
+	if err != nil || secret == "" {
+		t.Fatal(err)
+	}
+	keys, err := access.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := keys[len(keys)-1].ID
+	g, err := access.SaveAccountGroup(access.AccountGroup{Name: "team-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := adminDo(t, "POST", "/gateway-keys/accounts-key", `{"key":"`+id+`","accounts":["@`+g.ID+`"]}`); w.Code != 200 {
+		t.Fatalf("accounts-key: %d %s", w.Code, w.Body)
+	}
+	after, err := access.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"@" + g.ID}; !slices.Equal(after[len(after)-1].Accounts, want) {
+		t.Errorf("the key's accounts are %v, want %v", after[len(after)-1].Accounts, want)
+	}
 }
 
 // ljayic on X: gateway keys are managed through the API by the app's own

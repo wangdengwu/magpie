@@ -19,12 +19,18 @@ type Ops struct {
 	now   func() time.Time
 }
 
-// Magpie is what ops reads of magpie: the account groups and the gateway
-// keys. The portal's admin client is one; magpie's own page is another,
-// reading them in its own process with no key at all.
+// Magpie is what ops reads of magpie, and the one thing it writes: the
+// account groups and the gateway keys. The portal's admin client is one;
+// magpie's own page is another, reading them in its own process with no
+// key at all.
 type Magpie interface {
 	AccountGroups(ctx context.Context) ([]Group, error)
 	GatewayKeys(ctx context.Context) ([]GatewayKey, error)
+	// HoldKeyToGroup makes a key name an account group and nothing else,
+	// which is what holds it to that group's accounts. Add calls it for a
+	// key that names none, so a team made from the page is held as the
+	// portal draws it.
+	HoldKeyToGroup(ctx context.Context, keyID, groupID string) error
 }
 
 // NewOps opens the state folder and the admin key, as the portal does.
@@ -112,11 +118,17 @@ func (o *Ops) Add(ctx context.Context, in NewTeam) (Team, error) {
 	}
 	// A key that names no account reaches every account magpie has, every
 	// provider's, whatever group the team holds: the portal would draw one
-	// group and the key would spend all of them. The group has to be in the
-	// key's own accounts list — "@<group id>" — for the team's boundary to
-	// be the key's too.
+	// group and the key would spend all of them. The group is put on the
+	// key here, so a team made from a page is held as the portal draws it
+	// — the two never come apart, which is what a page that asked ops to
+	// run a command could not promise.
+	//
+	// A key already held to the group is left as it is: it may name other
+	// accounts of its own, which that team's ops meant to allow.
 	if !holdsGroup(keys[ki].Accounts, group.ID) {
-		return Team{}, fmt.Errorf("the gateway key %q is not held to the account group %s: it reaches every account magpie has, not this team's. Hold it first: `magpie gateway-key accounts %s @%s`", in.KeyID, group.ID, keys[ki].ID, group.ID)
+		if err := o.cat.HoldKeyToGroup(ctx, keys[ki].ID, group.ID); err != nil {
+			return Team{}, fmt.Errorf("the team's key couldn't be held to its account group %s: %w", group.ID, err)
+		}
 	}
 	made := Team{
 		ID:        id,

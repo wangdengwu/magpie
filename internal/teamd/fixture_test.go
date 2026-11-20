@@ -111,6 +111,19 @@ type fakeMagpie struct {
 	// the periods it names: a read that fails is what a page must say
 	// rather than draw as zeros.
 	refuseSpend map[string]int
+	// held are the keys ops held to a group, as "<key id>@<group id>", in
+	// order.
+	held []string
+	// refuseHold, when set, is the status accounts-key answers with: a
+	// write that fails must keep the team from being recorded.
+	refuseHold int
+}
+
+// heldKeys are the keys ops held to a group, in order.
+func (f *fakeMagpie) heldKeys() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.held...)
 }
 
 // setSpend makes one key's spend over one period, as magpie's ledger has
@@ -933,4 +946,23 @@ func (f *fakeMagpie) GatewayKeys(context.Context) ([]GatewayKey, error) {
 		return nil, fmt.Errorf("magpie answered %d", f.status)
 	}
 	return append([]GatewayKey(nil), f.keys...), nil
+}
+
+// HoldKeyToGroup is accounts-key as magpie takes it, and it changes the key
+// the way magpie's own would: the fixture's keys are what Add reads back.
+func (f *fakeMagpie) HoldKeyToGroup(_ context.Context, keyID, groupID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, "POST "+AdminPath+"gateway-keys/accounts-key")
+	if f.refuseHold != 0 {
+		return fmt.Errorf("magpie answered %d", f.refuseHold)
+	}
+	for i := range f.keys {
+		if f.keys[i].ID == keyID {
+			f.keys[i].Accounts = []string{"@" + groupID}
+			f.held = append(f.held, keyID+"@"+groupID)
+			return nil
+		}
+	}
+	return fmt.Errorf("magpie has no gateway key %s", keyID)
 }

@@ -265,6 +265,24 @@ func (c *AdminClient) AccountGroups(ctx context.Context) ([]Group, error) {
 	return out.Groups, nil
 }
 
+// HoldKeyToGroup makes keyID's accounts list name the group and nothing
+// else, which is what holds the key to that group's accounts (access's
+// "accounts-key"). A key that names no account reaches every account
+// magpie has, so this is what makes a team's boundary real rather than
+// drawn.
+//
+// It replaces whatever the key named before. That is the point: the key
+// is the team's, and what the team holds is its group, read as the group
+// is now on every request (access.expandGroups). An account put on the
+// key alone would outlive its place in the group, which is the boundary
+// this is here to keep.
+func (c *AdminClient) HoldKeyToGroup(ctx context.Context, keyID, groupID string) error {
+	return c.post(ctx, "gateway-keys/accounts-key", map[string]any{
+		"key":      keyID,
+		"accounts": []string{"@" + strings.TrimSpace(groupID)},
+	}, nil)
+}
+
 // post sends one management API path a JSON body and reads the answer into
 // out. A 204, which several of these routes answer, leaves out untouched.
 func (c *AdminClient) post(ctx context.Context, path string, in, out any) error {

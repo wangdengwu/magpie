@@ -45,12 +45,20 @@ func (guiMagpie) GatewayKeys(context.Context) ([]teamd.GatewayKey, error) {
 	}
 	out := make([]teamd.GatewayKey, 0, len(keys))
 	for _, k := range keys {
-		// Accounts travels with the key: Ops.Add reads it to refuse a key
-		// held to nothing, which without it looks like every key (a field
-		// left out here is the check reading an empty list).
+		// Accounts travels with the key: Ops.Add reads it to know whether
+		// the key is already held to its group, which without it looks like
+		// no key is (a field left out here is the check reading an empty
+		// list, and the page holding every key again).
 		out = append(out, teamd.GatewayKey{ID: k.ID, Name: k.Name, Off: k.Off, Accounts: k.Accounts, Issues: k.Issues, Admin: k.Admin})
 	}
 	return out, nil
+}
+
+// HoldKeyToGroup is accounts-key in this process: the same call the
+// Gateway page's own key menu makes, with no key and no HTTP.
+func (guiMagpie) HoldKeyToGroup(_ context.Context, keyID, groupID string) error {
+	_, err := access.Update("accounts-key", access.Change{Key: keyID, Accounts: []string{"@" + strings.TrimSpace(groupID)}})
+	return err
 }
 
 // opsRoutes are the ops page's routes. The store is teamd's own folder on
