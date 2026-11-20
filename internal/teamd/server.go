@@ -25,6 +25,8 @@ type Server struct {
 	groupMu sync.Mutex
 	// now is the clock, for the sign-ins' expiry and the pages' ages.
 	now func() time.Time
+	// icon is the portal's icon as a data: URL, "" for none (brand.go).
+	icon string
 }
 
 // New opens the state folder and reads the admin key. Everything that can
@@ -35,7 +37,11 @@ func New(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: store, admin: admin, signIns: newSignIns(), now: time.Now}, nil
+	icon, err := loadIcon(cfg.IconFile)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{cfg: cfg, store: store, admin: admin, signIns: newSignIns(), now: time.Now, icon: icon}, nil
 }
 
 // open checks cfg and opens what the portal and the ops commands both use.

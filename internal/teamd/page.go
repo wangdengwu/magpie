@@ -260,10 +260,12 @@ func (s *Server) render(w http.ResponseWriter, t trans, status int, body string)
 	h.Set("Content-Language", t.HTML())
 	// The token is in the path, and there is nothing here for a script to
 	// do: no page loads anything from another origin, runs script of its
-	// own, or may be framed. A frame is one way a page's URL is read.
-	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	// own, or may be framed. A frame is one way a page's URL is read. An
+	// image is a data: URL or nothing: the icon is in the page itself
+	// (brand.go), and data: reaches no origin.
+	h.Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(body))
+	_, _ = w.Write([]byte(withIcon(body, s.icon)))
 }
 
 // windowRow is one allowance window as the page draws it.

@@ -61,6 +61,9 @@ code, .mono { font:11.5px var(--code) }
 
 /* the page's head: the team, then what it holds */
 .head { display:flex; align-items:baseline; gap:4px 10px; flex-wrap:wrap; margin-bottom:3px }
+/* the portal's icon, when ops gave it one (brand.go) */
+.head img.brand { width:22px; height:22px; border-radius:5px; align-self:center; margin-right:2px }
+.said img.brand { width:44px; height:44px; border-radius:9px; margin-bottom:12px }
 .sum { display:flex; align-items:center; gap:4px 14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); margin-bottom:16px }
 /* no separators between these: one that wraps on its own leaves a dot at
    the end of a line with nothing after it, and one glued to the next item
