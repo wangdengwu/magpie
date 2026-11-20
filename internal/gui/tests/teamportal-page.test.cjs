@@ -10,11 +10,11 @@ const { chromium, webkit } = require("playwright");
 const { fixture } = require("./fixtures/caller-keys.cjs");
 
 const words = {
-  en: { make: "Make a team", makeThe: "Make the team", warn: "Reaches every account", noLink: "No link yet", newLink: "New link", group: "Pick an account group", key: "Pick a gateway key", held: "old's key now reaches its group's accounts only" },
-  zh: { make: "新建团队", makeThe: "新建", warn: "能用所有账号", noLink: "还没有链接", newLink: "新链接", group: "选择账号组", key: "选择网关密钥", held: "old 的密钥现在只能用它所在组的账号" },
-  "zh-TW": { make: "新增團隊", makeThe: "新增", warn: "能用所有帳號", noLink: "還沒有連結", newLink: "新連結", group: "選擇帳號群組", key: "選擇閘道金鑰", held: "old 的金鑰現在只能用它所在群組的帳號" },
-  ja: { make: "チームを作成", makeThe: "作成", warn: "すべてのアカウントを使える", noLink: "リンクはまだありません", newLink: "新しいリンク", group: "アカウントグループを選択", key: "ゲートウェイキーを選択", held: "old のキーはグループのアカウントだけを使うようになりました" },
-  de: { make: "Team anlegen", makeThe: "Anlegen", warn: "Erreicht jedes Konto", noLink: "Noch kein Link", newLink: "Neuer Link", group: "Kontogruppe wählen", key: "Gateway-Schlüssel wählen", held: "Der Schlüssel von old erreicht jetzt nur noch die Konten seiner Gruppe" },
+  en: { nameL: "Name", groupL: "Account group", keyL: "Gateway key", make: "Make a team", makeThe: "Make the team", warn: "Reaches every account", noLink: "No link yet", newLink: "New link", group: "Pick an account group", key: "Pick a gateway key", held: "old's key now reaches its group's accounts only" },
+  zh: { nameL: "名称", groupL: "账号组", keyL: "网关密钥", make: "新建团队", makeThe: "新建", warn: "能用所有账号", noLink: "还没有链接", newLink: "新链接", group: "选择账号组", key: "选择网关密钥", held: "old 的密钥现在只能用它所在组的账号" },
+  "zh-TW": { nameL: "名稱", groupL: "帳號組", keyL: "閘道金鑰", make: "新增團隊", makeThe: "新增", warn: "能用所有帳號", noLink: "還沒有連結", newLink: "新連結", group: "選擇帳號群組", key: "選擇閘道金鑰", held: "old 的金鑰現在只能用它所在群組的帳號" },
+  ja: { nameL: "名前", groupL: "アカウントグループ", keyL: "ゲートウェイキー", make: "チームを作成", makeThe: "作成", warn: "すべてのアカウントを使える", noLink: "リンクはまだありません", newLink: "新しいリンク", group: "アカウントグループを選択", key: "ゲートウェイキーを選択", held: "old のキーはグループのアカウントだけを使うようになりました" },
+  de: { nameL: "Name", groupL: "Kontogruppe", keyL: "Zugangsschlüssel", make: "Team anlegen", makeThe: "Anlegen", warn: "Erreicht jedes Konto", noLink: "Noch kein Link", newLink: "Neuer Link", group: "Kontogruppe wählen", key: "Gateway-Schlüssel wählen", held: "Der Schlüssel von old erreicht jetzt nur noch die Konten seiner Gruppe" },
 };
 
 // ops is magpie's side of the page: /ops/teams/*, as internal/gui/ops.go
@@ -104,6 +104,43 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // a team made: a name, a group and a key, then its link once
         await page.getByRole("button", { name: w.make, exact: true }).click();
         await editor.waitFor();
+        // each field's name is one cell and its control the next, level with
+        // it, and no name is cut off (the editor is a two-column grid:
+        // openModal puts its fields in .ebody, which is that grid)
+        const rows = await editor.evaluate((ed) => {
+          const box = ed.querySelector(":scope > .ebody") || ed;
+          const mid = (r) => r.top + r.height / 2;
+          const out = [];
+          for (const l of box.querySelectorAll(":scope > label")) {
+            const c = l.nextElementSibling;
+            const lr = l.getBoundingClientRect(), cr = c.getBoundingClientRect();
+            out.push({ label: l.textContent.trim(), off: Math.round((mid(lr) - mid(cr)) * 10) / 10,
+              over: l.scrollWidth - l.clientWidth, side: lr.right <= cr.left + 1 });
+          }
+          return out;
+        });
+        assert.deepEqual(rows.map((r) => r.label), [w.nameL, w.groupL, w.keyL].filter(Boolean).slice(0, rows.length), `the form's rows: ${JSON.stringify(rows)}`);
+        assert.equal(rows.length, 3, `the form's rows: ${JSON.stringify(rows)}`);
+        for (const r of rows) {
+          assert.ok(r.side, `${r.label} isn't beside its control`);
+          assert.ok(Math.abs(r.off) <= 2, `${r.label} sits ${r.off}px off its control`);
+          assert.ok(r.over <= 0, `the name "${r.label}" is cut off by ${r.over}px`);
+        }
+        // the three controls are one form's fields: the same height, and a
+        // box drawn round each, the pickers as much as the text field
+        const boxes = await editor.evaluate((ed) => {
+          const box = ed.querySelector(":scope > .ebody") || ed;
+          return [...box.querySelectorAll(":scope > label + *")].map((c) => {
+            const r = c.getBoundingClientRect(), s = getComputedStyle(c);
+            return { h: Math.round(r.height), border: s.borderTopWidth, opacity: s.opacity };
+          });
+        });
+        assert.equal(boxes.length, 3, JSON.stringify(boxes));
+        assert.equal(new Set(boxes.map((b) => b.h)).size, 1, `the fields are different heights: ${JSON.stringify(boxes)}`);
+        for (const b of boxes) {
+          assert.ok(parseFloat(b.border) >= 1, `a field has no border: ${JSON.stringify(b)}`);
+          assert.equal(b.opacity, "1", `a field is faded: ${JSON.stringify(b)}`);
+        }
         // nothing is sent until a group and a key are picked
         await editor.locator("input").fill("payments");
         await ok().click();

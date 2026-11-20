@@ -5,3 +5,12 @@ body.window #view-teamportal { padding-left: max(16px, calc(50% - 600px)); paddi
 #view-teamportal .row-head { margin: 14px 0 6px; padding: 0 2px; }
 /* a team's key that reaches every account magpie has: a warning */
 #view-teamportal .acc .amodels.tp-wide { color: var(--amber); }
+/* the line under the fields spans the editor's two columns, as its bar
+   does */
+.editor .tp-note { grid-column: 1 / -1; margin: 0; padding: 2px 0 0; }
+/* the two pickers are fields, drawn as the name field beside them is: a
+   box of the same height and border, never faded the way a row's badge is
+   while it waits to be pointed at */
+.editor .amodels.tp-pick { height: 27px; padding: 0 9px; font-size: 12.5px; color: var(--fg-2); border: 1px solid var(--line); border-radius: 7px; background: var(--card); box-shadow: none; opacity: 1; cursor: pointer; }
+.editor .amodels.tp-pick.set { color: var(--fg); }
+.editor .amodels.tp-pick:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); outline: none; }

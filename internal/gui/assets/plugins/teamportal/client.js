@@ -100,7 +100,7 @@ function tpDraw() {
 
 // tpPick is a button that picks one of opts, as the Gateway page's menus do
 function tpPick(label, empty, opts, onPick) {
-  const b = el("button", "amodels", t(empty));
+  const b = el("button", "amodels tp-pick", t(empty));
   b.type = "button";
   b.setAttribute("aria-label", t(label));
   b.setAttribute("aria-haspopup", "menu");
@@ -120,7 +120,10 @@ function tpPick(label, empty, opts, onPick) {
   return b;
 }
 
-// tpMake asks for a team's name, group and key, and makes it
+// tpMake asks for a team's name, group and key, and makes it. The dialog
+// is an editor: a two-column grid, the field's name in the first cell and
+// its control in the second, so form-align.test.cjs finds every name level
+// with its control.
 function tpMake() {
   const draft = { name: "", group: "", key: "" };
   const ed = el("div", "editor");
@@ -133,12 +136,9 @@ function tpMake() {
   const keys = tpList.keys.map((k) => ({ v: k.id, name: k.name, note: k.issues ? "" : t("Can't issue member keys yet"), literalName: true }));
   const group = tpPick("Account group", "Pick an account group", groups, (v) => { draft.group = v; });
   const key = tpPick("Gateway key", "Pick a gateway key", keys, (v) => { draft.key = v; });
-  const field = (label, control) => {
-    const r = el("label", "row pref");
-    r.append(el("span", "name", t(label)), el("span", "grow"), control);
-    return r;
-  };
-  const note = el("p", "usage-note", t("Making the team holds the key to the group: the key then uses that group's accounts and no others."));
+  // a name in the first cell, its control in the second
+  const field = (label, control) => [el("label", "", t(label)), control];
+  const note = el("p", "usage-note tp-note", t("Making the team holds the key to the group: the key then uses that group's accounts and no others."));
   const bar = el("div", "bar");
   const cancel = el("button", "text", t("Cancel"));
   const make = el("button", "text primary", t("Make the team"));
@@ -155,7 +155,7 @@ function tpMake() {
   };
   name.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") make.click(); else if (e.key === "Escape") closeConfirmAsk(); };
   bar.append(el("span", "grow"), cancel, make);
-  ed.append(head, field("Name", name), field("Account group", group), field("Gateway key", key), note, bar);
+  ed.append(head, ...field("Name", name), ...field("Account group", group), ...field("Gateway key", key), note, bar);
   confirmAsk = ed;
   openModal(ed);
   name.focus({ preventScroll: true });
