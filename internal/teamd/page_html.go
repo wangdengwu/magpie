@@ -78,7 +78,7 @@ img.brand-dark { display:none }
 .sum { display:flex; align-items:center; gap:4px 14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); margin-bottom:16px }
 /* no separators between these: one that wraps on its own leaves a dot at
    the end of a line with nothing after it, and one glued to the next item
-   is read out as part of it ("·Claude pool"). The gap and the two colours
+   is read out as part of it ("·account pool"). The gap and the two colours
    already say where one ends and the next begins. */
 .sum .mono { color:var(--fg-2) }
 

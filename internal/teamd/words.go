@@ -17,8 +17,8 @@ package teamd
 // enWords is English's sentences, the original's.
 var enWords = words{
 	// ---- the accounts page ----
-	"accounts.title":       "{{.Team}} · Claude pool",
-	"accounts.head":        "Claude pool",
+	"accounts.title":       "{{.Team}} · account pool",
+	"accounts.head":        "Account pool",
 	"accounts.in_use":      "{{.On}} of {{.Total}} accounts in use",
 	"accounts.in_use.one":  "{{.On}} of {{.Total}} account in use",
 	"accounts.group":       "account group {{.Name}} ({{.ID}})",
@@ -67,7 +67,7 @@ var enWords = words{
 	"switch.warn.last":               "The only account the team has in use. Disabling it leaves the team with nothing to serve its requests until an account is switched back on.",
 	"switch.why.key":                 "An API key has no sign-in to switch: it is used for as long as it is in the group.",
 	"switch.why.no_signin":           "Magpie lists no sign-in of this account, so there is nothing to switch.",
-	"switch.why.keylist":             "This is one of Claude's API keys: it has no sign-in of its own to switch, and is used for as long as it is in the team's pool.",
+	"switch.why.keylist":             "This is an API key, not a signed-in account: it has no sign-in of its own to switch, and is used for as long as it is in the team's pool.",
 	"switch.why.no_signin_long":      "Magpie lists no sign-in of this account, so there is nothing to switch. Ops can say why it has none.",
 	"switch.why.not_serving":         "Magpie lists no sign-in of it that can be switched",
 	"switch.why.not_serving.paused":  "it is the account its agent is signed in to, paused while another of the team's accounts is on",
@@ -307,8 +307,8 @@ var enWords = words{
 // zhWords is Chinese's sentences, Simplified. A language with no entry for a
 // sentence reads English's.
 var zhWords = words{
-	"accounts.title":       "{{.Team}} · Claude 池",
-	"accounts.head":        "Claude 池",
+	"accounts.title":       "{{.Team}} · 账号池",
+	"accounts.head":        "账号池",
 	"accounts.in_use":      "{{.On}}/{{.Total}} 个账号在用",
 	"accounts.in_use.one":  "{{.On}}/{{.Total}} 个账号在用",
 	"accounts.group":       "账号组 {{.Name}}（{{.ID}}）",
@@ -355,7 +355,7 @@ var zhWords = words{
 	"switch.warn.last":               "这是团队唯一在用的账号。停用它之后，团队在重新启用某个账号之前没有账号可用。",
 	"switch.why.key":                 "API 密钥没有可切换的登录：它在组里就一直被使用。",
 	"switch.why.no_signin":           "magpie 没有这个账号的登录，没有可切换的。",
-	"switch.why.keylist":             "这是 Claude 的一个 API 密钥：它没有自己的登录可切换，只要在团队的池里就一直被使用。",
+	"switch.why.keylist":             "这是一个 API 密钥，不是已登录的账号：它没有自己的登录可切换，只要在团队的池里就一直被使用。",
 	"switch.why.no_signin_long":      "magpie 没有这个账号的登录，没有可切换的。运维能说明为什么没有。",
 	"switch.why.not_serving":         "magpie 没有它可切换的登录",
 	"switch.why.not_serving.paused":  "团队成员正在用它，因团队另一个账号在用而暂停",

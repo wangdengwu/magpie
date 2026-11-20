@@ -162,13 +162,17 @@ func (c *AdminClient) Catalog(ctx context.Context) (Catalog, error) {
 	for i, p := range provs.Providers {
 		byProvider[p.ID] = i
 		logins := map[string]login{}
-		for _, l := range p.Account.Logins {
-			if l.User == "" {
-				continue
-			}
-			logins[accountKey(l.User)] = login{User: l.User, Plan: l.Plan, Active: l.Active, On: l.On, Paused: l.Paused}
-		}
+		// A provider signed in with a key alone has no account block at all
+		// (opencode-go, a relay), so its logins are read only when there is
+		// one: p.Account is nil then, and reading through it panicked every
+		// page that lists accounts.
 		if p.Account != nil {
+			for _, l := range p.Account.Logins {
+				if l.User == "" {
+					continue
+				}
+				logins[accountKey(l.User)] = login{User: l.User, Plan: l.Plan, Active: l.Active, On: l.On, Paused: l.Paused}
+			}
 			// The account its agent is signed in to, when the logins list
 			// doesn't carry it: it is in use by being the one signed in.
 			if u := p.Account.User; u != "" {

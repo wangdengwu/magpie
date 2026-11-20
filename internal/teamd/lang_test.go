@@ -163,7 +163,7 @@ func TestEnglishPagesAreUnchanged(t *testing.T) {
 	memberSpends(f)
 	body := pageText(accepting(t, f, "/team/"+f.tokenA, "en-US").Body.String())
 	for _, want := range []string{
-		"Claude pool",
+		"Account pool",
 		"2 of 2 accounts in use",
 		"account group",
 		"Usage", "Connect", "Member keys", "History", "Add an account",
@@ -228,10 +228,10 @@ func TestThePortalSpeaksOneLanguagePerRequest(t *testing.T) {
 	f := newFixture(t)
 	first := pageText(accepting(t, f, "/team/"+f.tokenA, "zh-CN").Body.String())
 	second := pageText(accepting(t, f, "/team/"+f.tokenA, "en-US").Body.String())
-	if !strings.Contains(first, "Claude 池") {
+	if !strings.Contains(first, "账号池") {
 		t.Errorf("the first request wasn't Chinese:\n%s", first)
 	}
-	if !strings.Contains(second, "Claude pool") || strings.Contains(second, "Claude 池") {
+	if !strings.Contains(second, "Account pool") || strings.Contains(second, "账号池") {
 		t.Errorf("the second request wasn't English:\n%s", second)
 	}
 }

@@ -228,6 +228,37 @@ func TestAccountsPageKeepsAKeyApart(t *testing.T) {
 	}
 }
 
+// TestAccountsPageSurvivesAProviderWithNoSignIn: a provider signed in with
+// a key alone answers GET /providers with no account block at all
+// (opencode-go, a relay). Reading through that block panicked every page
+// that lists accounts, which a browser showed as the portal being down.
+func TestAccountsPageSurvivesAProviderWithNoSignIn(t *testing.T) {
+	f := newFixture(t)
+	f.magpie.mu.Lock()
+	f.magpie.providers = append(f.magpie.providers, map[string]any{
+		"id":   "opencode-go",
+		"name": "OpenCode Go",
+	})
+	f.magpie.models = append(f.magpie.models, map[string]any{
+		"id": "opencode-go/deepseek-v4.1-flash", "name": "deepseek-v4.1-flash",
+		"provider": "opencode-go", "providerName": "OpenCode Go", "key": true,
+	})
+	f.magpie.mu.Unlock()
+	f.magpie.set([]Group{
+		{ID: groupA, Name: "Team A", Accounts: []string{acctA1, "opencode-go/deepseek-v4.1-flash"}},
+		{ID: groupB, Name: "Team B", Accounts: []string{acctB1}},
+	})
+	for _, path := range []string{"/team/" + f.tokenA, "/team/" + f.tokenA + "/usage", "/team/" + f.tokenA + "/connect"} {
+		rec := get(t, f.srv, path)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s answered %d: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	if body := get(t, f.srv, "/team/"+f.tokenA).Body.String(); !strings.Contains(body, "deepseek-v4.1-flash") {
+		t.Errorf("the page doesn't show the key-signed provider's account:\n%s", body)
+	}
+}
+
 // TestPageKeepsMagpiesLook is not a style test: it says the page still
 // carries magpie's own palette, so a change that reinvents the colours is
 // caught here rather than by an eye. The tokens are app.css's; a page that
