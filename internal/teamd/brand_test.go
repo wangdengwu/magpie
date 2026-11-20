@@ -141,41 +141,19 @@ func TestTheIconKeepsItsShape(t *testing.T) {
 	}
 }
 
-// TestADarkMarkOnADarkPageGetsALightPlate: a mark drawn in its owner's dark
-// colour is 1.4:1 on this page's dark ground — Weee!'s dark blue on
-// #1a1a1e — which is past reading. The colour is not the page's to change,
-// so the mark gets a white plate there, and the light mode is untouched.
-func TestADarkMarkOnADarkPageGetsALightPlate(t *testing.T) {
-	i := strings.Index(pageStyle, "@media (prefers-color-scheme: dark) {\n  .head img.brand")
-	if i < 0 {
-		t.Fatal("the icon has no plate in dark mode")
-	}
-	block := pageStyle[i : strings.Index(pageStyle[i:], "\n}")+i]
-	for _, want := range []string{"background:#fff", "padding:", "box-sizing:content-box", ".said img.brand"} {
-		if !strings.Contains(block, want) {
-			t.Errorf("the dark-mode plate doesn't say %q:\n%s", want, block)
-		}
-	}
-	// and the light mode still sets no ground at all
-	light := pageStyle[strings.Index(pageStyle, ".head img.brand {"):]
-	light = light[:strings.Index(light, "}")]
-	if strings.Contains(light, "background") {
-		t.Errorf("the light mode gives the mark a ground it doesn't need: %q", light)
-	}
-}
-
-// TestTheTabIconIsItsOwnImage: a browser draws a tab's icon square, so a
-// wide wordmark there is squeezed. With a favicon named, the tab carries it
-// and the head carries the mark; neither is put where the other goes.
-func TestTheTabIconIsItsOwnImage(t *testing.T) {
+// TestEachSchemeDrawsItsOwnMark: a mark that reads on white can be past
+// reading on the dark page, so ops may give two. Each is drawn only on its
+// own ground, and neither is put behind a plate: the mark keeps the colours
+// it was drawn in.
+func TestEachSchemeDrawsItsOwnMark(t *testing.T) {
 	f := newFixture(t)
 	dir := t.TempDir()
-	mark := filepath.Join(dir, "mark.svg")
-	if err := os.WriteFile(mark, []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106 30"/>`), 0o600); err != nil {
+	light := filepath.Join(dir, "light.svg")
+	if err := os.WriteFile(light, []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106 30"/>`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg := f.srv.cfg
-	cfg.IconFile, cfg.FaviconFile = mark, testIcon(t)
+	cfg.IconFile, cfg.IconDarkFile = light, testIcon(t)
 	srv, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -184,22 +162,38 @@ func TestTheTabIconIsItsOwnImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := get(t, srv, "/team/"+f.tokenA).Body.String()
-	if !strings.Contains(body, `<link rel="icon" href="data:image/png;base64,`) {
-		t.Errorf("the tab doesn't carry the favicon:\n%s", body)
+	for _, want := range []string{
+		`class="brand brand-light" src="data:image/svg+xml;base64,`,
+		`class="brand brand-dark" src="data:image/png;base64,`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the page doesn't carry %q:\n%s", want, body)
+		}
 	}
-	if !strings.Contains(body, `<img class="brand" src="data:image/svg+xml;base64,`) {
-		t.Errorf("the head doesn't carry the mark:\n%s", body)
+	// the rules that show one and hide the other, with no plate behind either
+	for _, want := range []string{
+		"img.brand-dark { display:none }",
+		"img.brand-light { display:none }",
+		"img.brand-dark { display:inline-block }",
+	} {
+		if !strings.Contains(pageStyle, want) {
+			t.Errorf("the page's style doesn't say %q", want)
+		}
 	}
-	if strings.Contains(body, `rel="icon" href="data:image/svg+xml`) {
-		t.Errorf("the wordmark is the tab's icon, where it is squeezed:\n%s", body)
+	if strings.Contains(pageStyle, "background:#fff") && strings.Contains(pageStyle, "img.brand") {
+		near := pageStyle[strings.Index(pageStyle, "img.brand"):]
+		if strings.Contains(near[:400], "background:#fff") {
+			t.Error("the mark still sits on a plate, which a mark drawn for the dark doesn't need")
+		}
 	}
 
-	// with no favicon named, the tab carries the icon, as it did before
-	cfg.FaviconFile = ""
+	// one mark, and both schemes get it: the light one is drawn and the dark
+	// one isn't there at all
+	cfg.IconDarkFile = ""
 	if srv, err = New(cfg); err != nil {
 		t.Fatal(err)
 	}
-	if body := get(t, srv, "/team/"+f.tokenA).Body.String(); !strings.Contains(body, `rel="icon" href="data:image/svg+xml`) {
-		t.Errorf("with no favicon, the tab carries no icon:\n%s", body)
+	if body := get(t, srv, "/team/"+f.tokenA).Body.String(); strings.Contains(body, `class="brand brand-dark"`) {
+		t.Errorf("with one mark, the page still carries a second:\n%s", body)
 	}
 }

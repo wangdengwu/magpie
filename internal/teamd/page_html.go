@@ -66,19 +66,14 @@ code, .mono { font:11.5px var(--code) }
    one rule draws both. */
 .head img.brand { height:22px; width:auto; max-width:120px; align-self:center; margin-right:2px }
 .said img.brand { height:44px; width:auto; max-width:180px; margin-bottom:12px }
-/* A mark is drawn in its owner's colours, and most of them are dark: Weee!'s
-   dark blue is 1.4:1 on this page's dark ground, which is past reading. The
-   colour is not the page's to change, so the mark gets a light plate instead,
-   and the padding is counted in the height so both modes line up. */
+/* A brand's mark is drawn in its own colours, and one that reads on white can
+   be past reading on a dark page: Weee!'s dark blue is 1.4:1 on this ground.
+   So ops may give a second mark for the dark, and each is drawn only on the
+   ground it was made for — no plate behind either, and no script needed. */
+img.brand-dark { display:none }
 @media (prefers-color-scheme: dark) {
-  .head img.brand {
-    height:14px; padding:4px 5px; box-sizing:content-box;
-    background:#fff; border-radius:3px;
-  }
-  .said img.brand {
-    height:30px; padding:7px 9px; box-sizing:content-box;
-    background:#fff; border-radius:6px;
-  }
+  img.brand-light { display:none }
+  img.brand-dark { display:inline-block }
 }
 .sum { display:flex; align-items:center; gap:4px 14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); margin-bottom:16px }
 /* no separators between these: one that wraps on its own leaves a dot at

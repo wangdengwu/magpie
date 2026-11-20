@@ -65,6 +65,12 @@ type Config struct {
 	// "" draws IconFile there, which suits a square icon and squeezes a
 	// wordmark.
 	FaviconFile string
+	// IconDarkFile is the mark for a page drawn on a dark ground, "" for
+	// IconFile there. A brand's mark is drawn in its own colours, and most
+	// of them are dark: a mark that reads on white may be past reading on
+	// this page's dark ground, and one made for the dark may be invisible
+	// on the light.
+	IconDarkFile string
 }
 
 // Validate says what is missing or unusable in c, before anything is

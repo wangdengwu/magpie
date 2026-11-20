@@ -73,7 +73,9 @@ team's own link shows it.
 PNG, JPEG, GIF, WebP, ICO or SVG, at most 64 KiB. -favicon-file
 (TEAMD_FAVICON_FILE) is the browser tab's icon, which a browser draws
 square; without it the tab shows the -icon-file, which squeezes a wide
-wordmark. Both are read once at start and put in the pages themselves;
+wordmark. -icon-dark-file (TEAMD_ICON_DARK_FILE) is the mark for a page
+drawn on a dark ground: a brand's mark comes in the colours it was drawn
+in, and a dark one may be past reading on a dark page. Both are read once at start and put in the pages themselves;
 nothing is fetched. A file that isn't such an image stops the portal at
 start.
 
@@ -102,6 +104,7 @@ func commonFlags(name string, stderr io.Writer) (*flag.FlagSet, *teamd.Config) {
 		KeyFile:      os.Getenv("TEAMD_KEY_FILE"),
 		IconFile:     os.Getenv("TEAMD_ICON_FILE"),
 		FaviconFile:  os.Getenv("TEAMD_FAVICON_FILE"),
+		IconDarkFile: os.Getenv("TEAMD_ICON_DARK_FILE"),
 		AuditMax:     envInt("TEAMD_AUDIT_MAX"),
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
@@ -132,6 +135,7 @@ func serve(args []string, stderr io.Writer) int {
 	fs.StringVar(&cfg.KeyFile, "key-file", cfg.KeyFile, "a folder of per-team key files for the connect page")
 	fs.StringVar(&cfg.IconFile, "icon-file", cfg.IconFile, "an image (PNG, SVG, …, at most 64 KiB) drawn beside each page's head")
 	fs.StringVar(&cfg.FaviconFile, "favicon-file", cfg.FaviconFile, "a square image for the browser tab's icon (the -icon-file when unset)")
+	fs.StringVar(&cfg.IconDarkFile, "icon-dark-file", cfg.IconDarkFile, "the mark beside each page's head on a dark ground (the -icon-file when unset)")
 	supervise := fs.Bool("supervise", false, "run the portal as a child and start it again whenever it ends (the sidecar's mode)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

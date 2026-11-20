@@ -69,15 +69,22 @@ func loadIcon(path string) (string, error) {
 //
 // It is done here, where every page passes, rather than in eight
 // templates: a page added later carries the icons without being told to.
-func withIcon(body, icon, favicon string) string {
+func withIcon(body, icon, iconDark, favicon string) string {
 	if favicon != "" {
 		body = strings.Replace(body, "</title>", `</title>`+"\n"+`<link rel="icon" href="`+favicon+`">`, 1)
 	}
 	if icon == "" {
 		return body
 	}
-	if strings.Contains(body, `<div class="head">`) {
-		return strings.Replace(body, `<div class="head">`, `<div class="head">`+"\n"+`  <img class="brand" src="`+icon+`" alt="">`, 1)
+	mark := `<img class="brand" src="` + icon + `" alt="">`
+	if iconDark != "" && iconDark != icon {
+		// two marks, each drawn only on its own ground: a page that has
+		// never run a script still shows the one the scheme calls for
+		mark = `<img class="brand brand-light" src="` + icon + `" alt="">` +
+			`<img class="brand brand-dark" src="` + iconDark + `" alt="">`
 	}
-	return strings.Replace(body, `<div class="said">`, `<div class="said">`+"\n"+`<img class="brand" src="`+icon+`" alt="">`, 1)
+	if strings.Contains(body, `<div class="head">`) {
+		return strings.Replace(body, `<div class="head">`, `<div class="head">`+"\n"+`  `+mark, 1)
+	}
+	return strings.Replace(body, `<div class="said">`, `<div class="said">`+"\n"+mark, 1)
 }
