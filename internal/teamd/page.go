@@ -265,7 +265,7 @@ func (s *Server) render(w http.ResponseWriter, t trans, status int, body string)
 	// (brand.go), and data: reaches no origin.
 	h.Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(withIcon(body, s.icon)))
+	_, _ = w.Write([]byte(withIcon(body, s.icon, s.favicon)))
 }
 
 // windowRow is one allowance window as the page draws it.

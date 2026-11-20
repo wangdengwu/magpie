@@ -69,10 +69,13 @@ files for the connect page to print. A team's key is mounted at
 page says ops keeps the key elsewhere and prints everything else. Only the
 team's own link shows it.
 
--icon-file (TEAMD_ICON_FILE) is an image drawn beside each page's head and
-as the browser tab's icon: PNG, JPEG, GIF, WebP, ICO or SVG, at most 64 KiB.
-It is read once at start and put in the pages themselves; nothing is
-fetched. A file that isn't such an image stops the portal at start.
+-icon-file (TEAMD_ICON_FILE) is an image drawn beside each page's head:
+PNG, JPEG, GIF, WebP, ICO or SVG, at most 64 KiB. -favicon-file
+(TEAMD_FAVICON_FILE) is the browser tab's icon, which a browser draws
+square; without it the tab shows the -icon-file, which squeezes a wide
+wordmark. Both are read once at start and put in the pages themselves;
+nothing is fetched. A file that isn't such an image stops the portal at
+start.
 
 -supervise runs the portal as a child of this process and starts it again
 whenever it ends, waiting 1s, then twice as long each time to 30s. It is
@@ -98,6 +101,7 @@ func commonFlags(name string, stderr io.Writer) (*flag.FlagSet, *teamd.Config) {
 		GatewayURL:   os.Getenv("TEAMD_GATEWAY_URL"),
 		KeyFile:      os.Getenv("TEAMD_KEY_FILE"),
 		IconFile:     os.Getenv("TEAMD_ICON_FILE"),
+		FaviconFile:  os.Getenv("TEAMD_FAVICON_FILE"),
 		AuditMax:     envInt("TEAMD_AUDIT_MAX"),
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
@@ -126,7 +130,8 @@ func serve(args []string, stderr io.Writer) int {
 	fs.Int64Var(&cfg.AuditMax, "audit-max", cfg.AuditMax, "how big audit.jsonl may grow before it rotates, in bytes (0 for the default, -1 for never)")
 	fs.StringVar(&cfg.GatewayURL, "gateway-url", cfg.GatewayURL, "the address members reach magpie at, for the connect page")
 	fs.StringVar(&cfg.KeyFile, "key-file", cfg.KeyFile, "a folder of per-team key files for the connect page")
-	fs.StringVar(&cfg.IconFile, "icon-file", cfg.IconFile, "an image (PNG, SVG, …, at most 64 KiB) drawn beside each page's head and as the tab's icon")
+	fs.StringVar(&cfg.IconFile, "icon-file", cfg.IconFile, "an image (PNG, SVG, …, at most 64 KiB) drawn beside each page's head")
+	fs.StringVar(&cfg.FaviconFile, "favicon-file", cfg.FaviconFile, "a square image for the browser tab's icon (the -icon-file when unset)")
 	supervise := fs.Bool("supervise", false, "run the portal as a child and start it again whenever it ends (the sidecar's mode)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

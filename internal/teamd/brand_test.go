@@ -37,7 +37,7 @@ func TestEveryPageCarriesTheIcon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.srv.icon = icon
+	f.srv.icon, f.srv.favicon = icon, icon
 	srcs := regexp.MustCompile(`(?:src|href)="([^"]*)"`)
 	for _, path := range []string{
 		"/team/" + f.tokenA,
@@ -161,5 +161,45 @@ func TestADarkMarkOnADarkPageGetsALightPlate(t *testing.T) {
 	light = light[:strings.Index(light, "}")]
 	if strings.Contains(light, "background") {
 		t.Errorf("the light mode gives the mark a ground it doesn't need: %q", light)
+	}
+}
+
+// TestTheTabIconIsItsOwnImage: a browser draws a tab's icon square, so a
+// wide wordmark there is squeezed. With a favicon named, the tab carries it
+// and the head carries the mark; neither is put where the other goes.
+func TestTheTabIconIsItsOwnImage(t *testing.T) {
+	f := newFixture(t)
+	dir := t.TempDir()
+	mark := filepath.Join(dir, "mark.svg")
+	if err := os.WriteFile(mark, []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106 30"/>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := f.srv.cfg
+	cfg.IconFile, cfg.FaviconFile = mark, testIcon(t)
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Store().Save(f.teams); err != nil {
+		t.Fatal(err)
+	}
+	body := get(t, srv, "/team/"+f.tokenA).Body.String()
+	if !strings.Contains(body, `<link rel="icon" href="data:image/png;base64,`) {
+		t.Errorf("the tab doesn't carry the favicon:\n%s", body)
+	}
+	if !strings.Contains(body, `<img class="brand" src="data:image/svg+xml;base64,`) {
+		t.Errorf("the head doesn't carry the mark:\n%s", body)
+	}
+	if strings.Contains(body, `rel="icon" href="data:image/svg+xml`) {
+		t.Errorf("the wordmark is the tab's icon, where it is squeezed:\n%s", body)
+	}
+
+	// with no favicon named, the tab carries the icon, as it did before
+	cfg.FaviconFile = ""
+	if srv, err = New(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if body := get(t, srv, "/team/"+f.tokenA).Body.String(); !strings.Contains(body, `rel="icon" href="data:image/svg+xml`) {
+		t.Errorf("with no favicon, the tab carries no icon:\n%s", body)
 	}
 }

@@ -58,9 +58,13 @@ type Config struct {
 	// named for its id; no file is not an error: ops may keep the key out of
 	// teamd on purpose.
 	KeyFile string
-	// IconFile is an image drawn beside each page's head and as the
-	// browser tab's icon, "" for none (brand.go).
+	// IconFile is an image drawn beside each page's head, "" for none
+	// (brand.go).
 	IconFile string
+	// FaviconFile is the browser tab's icon, which a browser draws square:
+	// "" draws IconFile there, which suits a square icon and squeezes a
+	// wordmark.
+	FaviconFile string
 }
 
 // Validate says what is missing or unusable in c, before anything is
