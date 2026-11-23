@@ -96,24 +96,34 @@ func opsRoutes(store *teamcore.Store, magpie teamcore.Magpie) http.Handler {
 	}
 	// a team made, its key held to its group, and its link: the only time
 	// the link exists in the clear
+	// The lifetime is read first, so one the page doesn't offer makes no
+	// team, holds no key and replaces no link.
 	write("/ops/teams/add", func(ctx context.Context, in opsAsk) (any, error) {
+		ttl, ok := teamcore.LinkTTL(in.TTL)
+		if !ok {
+			return nil, errNoLifetime
+		}
 		team, err := ops.Add(ctx, teamcore.NewTeam{Name: strings.TrimSpace(in.Name), GroupID: strings.TrimSpace(in.Group), KeyID: strings.TrimSpace(in.Key)})
 		if err != nil {
 			return nil, err
 		}
-		token, _, err := ops.Token(team.ID, 0)
+		token, team, err := ops.Token(team.ID, ttl)
 		if err != nil {
 			return nil, errors.New("the team was made, but its link couldn't be: " + err.Error())
 		}
-		return opsLink{ID: team.ID, Name: team.Name, Link: "/team/" + token}, nil
+		return opsLinkOf(team, token), nil
 	})
 	// a new link, which cuts the old one off
 	write("/ops/teams/token", func(ctx context.Context, in opsAsk) (any, error) {
-		token, team, err := ops.Token(strings.TrimSpace(in.ID), 0)
+		ttl, ok := teamcore.LinkTTL(in.TTL)
+		if !ok {
+			return nil, errNoLifetime
+		}
+		token, team, err := ops.Token(strings.TrimSpace(in.ID), ttl)
 		if err != nil {
 			return nil, err
 		}
-		return opsLink{ID: team.ID, Name: team.Name, Link: "/team/" + token}, nil
+		return opsLinkOf(team, token), nil
 	})
 	// a team made before Add held its key, held now
 	write("/ops/teams/hold", func(ctx context.Context, in opsAsk) (any, error) {
@@ -141,7 +151,14 @@ type opsAsk struct {
 	Name  string `json:"name"`
 	Group string `json:"group"`
 	Key   string `json:"key"`
+	// TTL is how long a link the write makes opens the team's pages: one
+	// of teamcore's LinkLifetimes, "" for forever
+	TTL string `json:"ttl,omitempty"`
 }
+
+// errNoLifetime answers a lifetime the page doesn't offer, in words the
+// page translates.
+var errNoLifetime = errors.New("Pick one of the lifetimes the page offers.")
 
 type opsErr struct {
 	Error string `json:"error"`
@@ -153,6 +170,14 @@ type opsLink struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Link string `json:"link,omitempty"`
+	// ExpiresAt is when the link it made stops working, none for a link
+	// with no end
+	ExpiresAt time.Time `json:"expiresAt,omitzero"`
+}
+
+// opsLinkOf is the answer to a write that made team's link, token.
+func opsLinkOf(team teamcore.Team, token string) opsLink {
+	return opsLink{ID: team.ID, Name: team.Name, Link: "/team/" + token, ExpiresAt: team.ExpiresAt}
 }
 
 type opsRemoved struct {
@@ -179,6 +204,14 @@ type opsTeam struct {
 	KeyName   string `json:"keyName,omitempty"`
 	// Linked: a link has been issued; the link itself is never kept
 	Linked bool `json:"linked"`
+	// ExpiresAt is when the link stops working, none for a link with no
+	// end; Expired, that it has, so the page doesn't draw it as working
+	ExpiresAt time.Time `json:"expiresAt,omitzero"`
+	Expired   bool      `json:"expired,omitempty"`
+	// Lifetime is the lifetime the link was issued for, one of
+	// teamcore's LinkLifetimes, so New link offers the same again; ""
+	// when it is none of them
+	Lifetime string `json:"lifetime,omitempty"`
 	// Accounts is how many accounts its group holds, nil when magpie
 	// couldn't say
 	Accounts *int `json:"accounts"`
@@ -203,6 +236,7 @@ type opsKey struct {
 
 func opsListOf(ctx context.Context, ops *teamcore.Ops) opsList {
 	out := opsList{Teams: []opsTeam{}, Groups: []opsGroup{}, Keys: []opsKey{}}
+	now := time.Now()
 	var errs []string
 	rows, err := ops.List(ctx)
 	if err != nil {
@@ -227,6 +261,10 @@ func opsListOf(ctx context.Context, ops *teamcore.Ops) opsList {
 	}
 	for _, row := range rows {
 		t := opsTeam{ID: row.Team.ID, Name: row.Team.Name, GroupID: row.Team.GroupID, KeyID: row.Team.KeyID, Linked: row.Team.TokenHash != ""}
+		if t.Linked {
+			t.ExpiresAt, t.Expired = row.Team.ExpiresAt, row.Team.Expired(now)
+			t.Lifetime = row.Team.Lifetime()
+		}
 		if row.Known {
 			n := row.Accounts
 			t.Accounts = &n

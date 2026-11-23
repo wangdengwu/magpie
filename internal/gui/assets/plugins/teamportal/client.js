@@ -72,13 +72,12 @@ function tpDraw() {
       row.append(warn);
     }
     if (!tm.linked) row.append(el("span", "amodels", t("No link yet")));
+    // a link past its end opens nothing: said as a warning, not as a link
+    else if (tm.expired) row.append(el("span", "amodels tp-wide", t("Link expired")));
+    else if (tm.expiresAt) row.append(el("span", "amodels", t("Link expires {date}", { date: tpWhen(tm.expiresAt) })));
     const link = el("button", "text", t("New link"));
     link.type = "button";
-    link.onclick = async () => {
-      if (tm.linked && !(await confirmAction(t("Make a new link for {name}?", { name: tm.name }), t("The link the team has now stops working at once."), t("Make a new link")))) return;
-      const out = await tpWrite("token", { id: tm.id });
-      if (out) tpShowLink(out);
-    };
+    link.onclick = () => tpRelink(tm);
     const rm = el("button", "copy");
     rm.type = "button";
     rm.title = t("Remove");
@@ -98,34 +97,47 @@ function tpDraw() {
   box.replaceChildren(...kids);
 }
 
-// tpPick is a button that picks one of opts, as the Gateway page's menus do
-function tpPick(label, empty, opts, onPick) {
+// tpPick is a button that picks one of opts, as the Gateway page's menus do,
+// starting at start ("" for none picked yet)
+function tpPick(label, empty, opts, onPick, start = "") {
   const b = el("button", "amodels tp-pick", t(empty));
   b.type = "button";
   b.setAttribute("aria-label", t(label));
   b.setAttribute("aria-haspopup", "menu");
-  let value = "";
+  let value = start;
+  const show = () => {
+    const o = opts.find((x) => x.v === value);
+    b.textContent = o ? o.name : t(empty);
+    b.classList.toggle("set", !!o);
+  };
+  show();
   b.onclick = (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (b.classList.contains("open")) return closeProtoMenu();
     openProtoMenu(b, opts, value, (v) => {
       value = v;
-      const o = opts.find((x) => x.v === v);
-      b.textContent = o ? o.name : t(empty);
-      b.classList.toggle("set", !!o);
+      show();
       onPick(v);
     }, label, "sess-menu");
   };
   return b;
 }
 
+// the lifetimes a team's link is offered with, teamcore's LinkLifetimes: the
+// value the routes take and the words the menu shows
+const tpLifetimes = () => [["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"], ["forever", "Never expires"]]
+  .map(([v, name]) => ({ v, name: t(name), literalName: true }));
+
+// tpWhen is a link's end in the reader's own way of writing a time
+const tpWhen = (at) => new Date(at).toLocaleString(intlLang());
+
 // tpMake asks for a team's name, group and key, and makes it. The dialog
 // is an editor: a two-column grid, the field's name in the first cell and
 // its control in the second, so form-align.test.cjs finds every name level
 // with its control.
 function tpMake() {
-  const draft = { name: "", group: "", key: "" };
+  const draft = { name: "", group: "", key: "", ttl: "forever" };
   const ed = el("div", "editor");
   const head = el("div", "ehead");
   head.append(el("b", "", t("Make a team")));
@@ -136,6 +148,7 @@ function tpMake() {
   const keys = tpList.keys.map((k) => ({ v: k.id, name: k.name, note: k.issues ? "" : t("Can't issue member keys yet"), literalName: true }));
   const group = tpPick("Account group", "Pick an account group", groups, (v) => { draft.group = v; });
   const key = tpPick("Gateway key", "Pick a gateway key", keys, (v) => { draft.key = v; });
+  const life = tpPick("Link lifetime", "Never expires", tpLifetimes(), (v) => { draft.ttl = v; }, draft.ttl);
   // a name in the first cell, its control in the second
   const field = (label, control) => [el("label", "", t(label)), control];
   const note = el("p", "usage-note tp-note", t("Making the team holds the key to the group: the key then uses that group's accounts and no others."));
@@ -155,10 +168,40 @@ function tpMake() {
   };
   name.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") make.click(); else if (e.key === "Escape") closeConfirmAsk(); };
   bar.append(el("span", "grow"), cancel, make);
-  ed.append(head, ...field("Name", name), ...field("Account group", group), ...field("Gateway key", key), note, bar);
+  ed.append(head, ...field("Name", name), ...field("Account group", group), ...field("Gateway key", key), ...field("Link lifetime", life), note, bar);
   confirmAsk = ed;
   openModal(ed);
   name.focus({ preventScroll: true });
+}
+
+// tpRelink asks how long a team's new link opens its pages, starting at the
+// lifetime its link has now, and makes it. A link that still works stops at
+// once, which the dialog says; one past its end, or none, has nothing to
+// stop.
+function tpRelink(tm) {
+  let ttl = tm.lifetime || "forever";
+  const ed = el("div", "editor");
+  const head = el("div", "ehead");
+  head.append(el("b", "", t("Make a new link for {name}?", { name: tm.name })));
+  const life = tpPick("Link lifetime", "Never expires", tpLifetimes(), (v) => { ttl = v; }, ttl);
+  const bar = el("div", "bar");
+  const cancel = el("button", "text", t("Cancel"));
+  const make = el("button", "text primary", t("Make a new link"));
+  cancel.type = make.type = "button";
+  cancel.onclick = () => closeConfirmAsk();
+  make.onclick = async () => {
+    const out = await tpWrite("token", { id: tm.id, ttl });
+    if (!out) return;
+    closeConfirmAsk();
+    tpShowLink(out);
+  };
+  bar.append(el("span", "grow"), cancel, make);
+  ed.append(head, el("label", "", t("Link lifetime")), life);
+  if (tm.linked && !tm.expired) ed.append(el("p", "usage-note tp-note", t("The link the team has now stops working at once.")));
+  ed.append(bar);
+  confirmAsk = ed;
+  openModal(ed);
+  make.focus({ preventScroll: true });
 }
 
 // tpShowLink shows a team's link the one time it exists: teamd keeps its
@@ -176,7 +219,9 @@ function tpShowLink(out) {
   done.type = "button";
   done.onclick = () => closeConfirmAsk();
   bar.append(el("span", "grow"), done);
-  ed.append(head, line, note, bar);
+  ed.append(head, line, note);
+  if (out.expiresAt) ed.append(el("p", "usage-note", t("This link stops working on {date}.", { date: tpWhen(out.expiresAt) })));
+  ed.append(bar);
   confirmAsk = ed;
   openModal(ed);
   done.focus({ preventScroll: true });

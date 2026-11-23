@@ -1,20 +1,22 @@
 // Models › Team portal: the teams this magpie serves, made from magpie's
 // own account groups and gateway keys (plugins/teamportal, internal/gui
 // ops.go). A team whose key reaches every account says so, and is held to
-// its group with one click; a team is made by picking a group and a key,
-// and its link is shown once; New link asks first, as the old one stops;
-// Remove asks first too.
+// its group with one click; a team is made by picking a group, a key and
+// how long its link lasts, and its link is shown once with its end; New
+// link asks how long the new one lasts, starting at the old one's, and
+// says the old one stops; a link with an end says when, and one past it
+// says so; Remove asks first.
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
 const { fixture } = require("./fixtures/caller-keys.cjs");
 
 const words = {
-  en: { nameL: "Name", groupL: "Account group", keyL: "Gateway key", make: "Make a team", makeThe: "Make the team", warn: "Reaches every account", noLink: "No link yet", newLink: "New link", group: "Pick an account group", key: "Pick a gateway key", held: "old's key now reaches its group's accounts only" },
-  zh: { nameL: "名称", groupL: "账号组", keyL: "网关密钥", make: "新建团队", makeThe: "新建", warn: "能用所有账号", noLink: "还没有链接", newLink: "新链接", group: "选择账号组", key: "选择网关密钥", held: "old 的密钥现在只能用它所在组的账号" },
-  "zh-TW": { nameL: "名稱", groupL: "帳號組", keyL: "閘道金鑰", make: "新增團隊", makeThe: "新增", warn: "能用所有帳號", noLink: "還沒有連結", newLink: "新連結", group: "選擇帳號群組", key: "選擇閘道金鑰", held: "old 的金鑰現在只能用它所在群組的帳號" },
-  ja: { nameL: "名前", groupL: "アカウントグループ", keyL: "ゲートウェイキー", make: "チームを作成", makeThe: "作成", warn: "すべてのアカウントを使える", noLink: "リンクはまだありません", newLink: "新しいリンク", group: "アカウントグループを選択", key: "ゲートウェイキーを選択", held: "old のキーはグループのアカウントだけを使うようになりました" },
-  de: { nameL: "Name", groupL: "Kontogruppe", keyL: "Zugangsschlüssel", make: "Team anlegen", makeThe: "Anlegen", warn: "Erreicht jedes Konto", noLink: "Noch kein Link", newLink: "Neuer Link", group: "Kontogruppe wählen", key: "Gateway-Schlüssel wählen", held: "Der Schlüssel von old erreicht jetzt nur noch die Konten seiner Gruppe" },
+  en: { nameL: "Name", groupL: "Account group", keyL: "Gateway key", make: "Make a team", makeThe: "Make the team", warn: "Reaches every account", noLink: "No link yet", newLink: "New link", group: "Pick an account group", key: "Pick a gateway key", held: "old's key now reaches its group's accounts only", lifeL: "Link lifetime", never: "Never expires", d30: "30 days", d90: "90 days", expired: "Link expired", ends: "Link expires", stops: "This link stops working on", stopsNow: "stops working at once" },
+  zh: { nameL: "名称", groupL: "账号组", keyL: "网关密钥", make: "新建团队", makeThe: "新建", warn: "能用所有账号", noLink: "还没有链接", newLink: "新链接", group: "选择账号组", key: "选择网关密钥", held: "old 的密钥现在只能用它所在组的账号", lifeL: "链接有效期", never: "永久有效", d30: "30 天", d90: "90 天", expired: "链接已过期", ends: "失效", stops: "之后失效", stopsNow: "立即失效" },
+  "zh-TW": { nameL: "名稱", groupL: "帳號組", keyL: "閘道金鑰", make: "新增團隊", makeThe: "新增", warn: "能用所有帳號", noLink: "還沒有連結", newLink: "新連結", group: "選擇帳號群組", key: "選擇閘道金鑰", held: "old 的金鑰現在只能用它所在群組的帳號", lifeL: "連結有效期", never: "永久有效", d30: "30 天", d90: "90 天", expired: "連結已過期", ends: "失效", stops: "之後失效", stopsNow: "立即失效" },
+  ja: { nameL: "名前", groupL: "アカウントグループ", keyL: "ゲートウェイキー", make: "チームを作成", makeThe: "作成", warn: "すべてのアカウントを使える", noLink: "リンクはまだありません", newLink: "新しいリンク", group: "アカウントグループを選択", key: "ゲートウェイキーを選択", held: "old のキーはグループのアカウントだけを使うようになりました", lifeL: "リンクの有効期間", never: "無期限", d30: "30 日", d90: "90 日", expired: "リンクの期限切れ", ends: "に失効", stops: "以降使えなくなります", stopsNow: "すぐに使えなくなります" },
+  de: { nameL: "Name", groupL: "Kontogruppe", keyL: "Zugangsschlüssel", make: "Team anlegen", makeThe: "Anlegen", warn: "Erreicht jedes Konto", noLink: "Noch kein Link", newLink: "Neuer Link", group: "Kontogruppe wählen", key: "Gateway-Schlüssel wählen", held: "Der Schlüssel von old erreicht jetzt nur noch die Konten seiner Gruppe", lifeL: "Gültigkeit des Links", never: "Läuft nie ab", d30: "30 Tage", d90: "90 Tage", expired: "Link abgelaufen", ends: "läuft am", stops: "funktioniert ab", stopsNow: "funktioniert sofort nicht mehr" },
 };
 
 // ops is magpie's side of the page: /ops/teams/*, as internal/gui/ops.go
@@ -22,12 +24,15 @@ const words = {
 function ops(writes) {
   const list = {
     teams: [
-      { id: "ec-team", name: "ec-team", groupId: "g1", groupName: "ec", keyId: "k1", keyName: "ec", linked: true, accounts: 2, held: true },
+      { id: "ec-team", name: "ec-team", groupId: "g1", groupName: "ec", keyId: "k1", keyName: "ec", linked: true, accounts: 2, held: true, expiresAt: "2027-01-15T03:00:00Z", lifetime: "30d" },
+      { id: "late", name: "late", groupId: "g4", groupName: "late", keyId: "k4", keyName: "late", linked: true, accounts: 1, held: true, expiresAt: "2026-11-01T03:00:00Z", expired: true, lifetime: "7d" },
       { id: "old", name: "old", groupId: "g2", groupName: "legacy", keyId: "k2", keyName: "legacy", linked: false, accounts: 0, held: false },
     ],
     groups: [{ id: "g1", name: "ec", accounts: 2 }, { id: "g2", name: "legacy", accounts: 0 }, { id: "g3", name: "payments", accounts: 3 }],
     keys: [{ id: "k1", name: "ec", issues: true }, { id: "k2", name: "legacy", issues: false }, { id: "k3", name: "payments-key", issues: true }],
   };
+  // when a link made now for ttl ends, as ops.go answers it: none for forever
+  const ends = (ttl) => ({ "7d": "2026-11-30T03:00:00Z", "30d": "2026-12-23T03:00:00Z", "90d": "2027-02-21T03:00:00Z" })[ttl];
   return async (route) => {
     const req = route.request(), what = new URL(req.url()).pathname.replace("/ops/teams/", "");
     const json = (body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -37,11 +42,11 @@ function ops(writes) {
     const team = list.teams.find((x) => x.id === body.id);
     switch (what) {
       case "add":
-        list.teams.push({ id: body.name, name: body.name, groupId: body.group, groupName: "payments", keyId: body.key, keyName: "payments-key", linked: true, accounts: 3, held: true });
-        return json({ id: body.name, name: body.name, link: "/team/tok-made" });
+        list.teams.push({ id: body.name, name: body.name, groupId: body.group, groupName: "payments", keyId: body.key, keyName: "payments-key", linked: true, accounts: 3, held: true, expiresAt: ends(body.ttl), lifetime: body.ttl });
+        return json({ id: body.name, name: body.name, link: "/team/tok-made", expiresAt: ends(body.ttl) });
       case "token":
-        team.linked = true;
-        return json({ id: team.id, name: team.name, link: "/team/tok-new" });
+        Object.assign(team, { linked: true, expired: false, expiresAt: ends(body.ttl), lifetime: body.ttl });
+        return json({ id: team.id, name: team.name, link: "/team/tok-new", expiresAt: ends(body.ttl) });
       case "hold":
         team.held = true;
         return json({ id: team.id, name: team.name });
@@ -94,6 +99,13 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.ok((await row("old").getByRole("button", { name: w.warn }).getAttribute("title")).length > 20, "the warning doesn't say what it means");
         assert.equal(await row("old").getByText(w.noLink, { exact: true }).count(), 1);
         assert.equal(await row("ec-team").getByText(w.noLink, { exact: true }).count(), 0);
+        // a link with an end says when; one past it says so, as a warning;
+        // one with no link says neither
+        const said = (id) => row(id).evaluate((r) => r.textContent);
+        assert.ok((await said("ec-team")).includes(w.ends), `ec-team's row doesn't say when its link ends: ${await said("ec-team")}`);
+        assert.ok(!(await said("ec-team")).includes(w.expired), "a working link is said to be expired");
+        assert.equal((await row("late").locator(".amodels.tp-wide").textContent()).trim(), w.expired);
+        assert.ok(!(await said("old")).includes(w.expired) && !(await said("old")).includes(w.ends), "a team with no link says its link ends");
 
         // held with one click
         await row("old").getByRole("button", { name: w.warn }).click();
@@ -101,13 +113,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.deepEqual(writes.at(-1), { what: "hold", body: { id: "old" }, origin: "http://magpie.test" });
         assert.equal((await page.locator("#status").textContent()).trim(), w.held);
 
-        // a team made: a name, a group and a key, then its link once
+        // a team made: a name, a group, a key and how long its link lasts,
+        // then its link once
         await page.getByRole("button", { name: w.make, exact: true }).click();
         await editor.waitFor();
         // each field's name is one cell and its control the next, level with
         // it, and no name is cut off (the editor is a two-column grid:
         // openModal puts its fields in .ebody, which is that grid)
-        const rows = await editor.evaluate((ed) => {
+        const formRows = () => editor.evaluate((ed) => {
           const box = ed.querySelector(":scope > .ebody") || ed;
           const mid = (r) => r.top + r.height / 2;
           const out = [];
@@ -119,14 +132,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           }
           return out;
         });
-        assert.deepEqual(rows.map((r) => r.label), [w.nameL, w.groupL, w.keyL].filter(Boolean).slice(0, rows.length), `the form's rows: ${JSON.stringify(rows)}`);
-        assert.equal(rows.length, 3, `the form's rows: ${JSON.stringify(rows)}`);
-        for (const r of rows) {
-          assert.ok(r.side, `${r.label} isn't beside its control`);
-          assert.ok(Math.abs(r.off) <= 2, `${r.label} sits ${r.off}px off its control`);
-          assert.ok(r.over <= 0, `the name "${r.label}" is cut off by ${r.over}px`);
-        }
-        // the three controls are one form's fields: the same height, and a
+        const levelRows = (rows, want) => {
+          assert.deepEqual(rows.map((r) => r.label), want, `the form's rows: ${JSON.stringify(rows)}`);
+          for (const r of rows) {
+            assert.ok(r.side, `${r.label} isn't beside its control`);
+            assert.ok(Math.abs(r.off) <= 2, `${r.label} sits ${r.off}px off its control`);
+            assert.ok(r.over <= 0, `the name "${r.label}" is cut off by ${r.over}px`);
+          }
+        };
+        levelRows(await formRows(), [w.nameL, w.groupL, w.keyL, w.lifeL]);
+        // the four controls are one form's fields: the same height, and a
         // box drawn round each, the pickers as much as the text field
         const boxes = await editor.evaluate((ed) => {
           const box = ed.querySelector(":scope > .ebody") || ed;
@@ -135,7 +150,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             return { h: Math.round(r.height), border: s.borderTopWidth, opacity: s.opacity };
           });
         });
-        assert.equal(boxes.length, 3, JSON.stringify(boxes));
+        assert.equal(boxes.length, 4, JSON.stringify(boxes));
         assert.equal(new Set(boxes.map((b) => b.h)).size, 1, `the fields are different heights: ${JSON.stringify(boxes)}`);
         for (const b of boxes) {
           assert.ok(parseFloat(b.border) >= 1, `a field has no border: ${JSON.stringify(b)}`);
@@ -151,21 +166,45 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator(".proto-menu .pm-item", { hasText: "payments" }).first().click();
         await editor.locator("button.amodels", { hasText: w.key }).click();
         await page.locator(".proto-menu .pm-item", { hasText: "payments-key" }).click();
+        // the link's lifetime starts at none, and 30 days is picked
+        const life = editor.locator("button.amodels", { hasText: w.never });
+        assert.equal(await life.count(), 1, "the lifetime doesn't start at no end");
+        await life.click();
+        await page.locator(".proto-menu .pm-item", { hasText: w.d30 }).click();
+        assert.equal(await editor.locator("button.amodels", { hasText: w.d30 }).count(), 1, "the picked lifetime isn't shown");
         assert.equal((await ok().textContent()).trim(), w.makeThe);
         await ok().click();
         await page.waitForFunction(() => document.querySelector("#modal .editor .mono")?.textContent.includes("/team/tok-made"));
-        assert.deepEqual(writes.at(-1).body, { name: "payments", group: "g3", key: "k3" });
+        assert.deepEqual(writes.at(-1).body, { name: "payments", group: "g3", key: "k3", ttl: "30d" });
         assert.equal((await editor.locator(".mono").textContent()).trim(), "http://magpie.test/team/tok-made");
+        assert.ok((await editor.textContent()).includes(w.stops), "the made link doesn't say when it ends");
         await ok().click();
         await row("payments").waitFor();
 
-        // New link asks first: the old one stops
+        // New link asks how long, starting at the link's own lifetime, and
+        // says the link that works now stops
         await row("ec-team").getByRole("button", { name: w.newLink, exact: true }).click();
-        await accept().waitFor();
+        await editor.waitFor();
+        assert.equal(await editor.locator("button.amodels", { hasText: w.d30 }).count(), 1, "New link doesn't start at the link's own lifetime");
+        // its one field is an editor's row too, its name level with the picker
+        levelRows(await formRows(), [w.lifeL]);
+        assert.ok((await editor.textContent()).includes(w.stopsNow), "New link doesn't say the old link stops");
         assert.equal(writes.filter((x) => x.what === "token").length, 0, "a new link was made before it was asked");
-        await accept().click();
-        await page.waitForFunction(() => document.querySelector("#modal .editor .mono")?.textContent.endsWith("/team/tok-new"));
+        await editor.locator("button.amodels", { hasText: w.d30 }).click();
+        await page.locator(".proto-menu .pm-item", { hasText: w.d90 }).click();
         await ok().click();
+        await page.waitForFunction(() => document.querySelector("#modal .editor .mono")?.textContent.endsWith("/team/tok-new"));
+        assert.deepEqual(writes.at(-1).body, { id: "ec-team", ttl: "90d" });
+        assert.ok((await editor.textContent()).includes(w.stops), "the new link doesn't say when it ends");
+        await ok().click();
+        await editor.waitFor({ state: "detached" });
+
+        // a link past its end has nothing left to stop, and Cancel sends nothing
+        await row("late").getByRole("button", { name: w.newLink, exact: true }).click();
+        await editor.waitFor();
+        assert.ok(!(await editor.textContent()).includes(w.stopsNow), "New link on an expired link says a working link stops");
+        await editor.locator(".bar button:not(.primary)").click();
+        await editor.waitFor({ state: "detached" });
 
         // Remove asks first too
         await row("old").locator("button.copy").click();

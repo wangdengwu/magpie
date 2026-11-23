@@ -57,6 +57,21 @@ var LinkLifetimes = []LinkLifetime{
 // LinkForever is the lifetime of a link with no end.
 const LinkForever = "forever"
 
+// Lifetime is the value of the lifetime the team's link was issued for:
+// LinkForever for one with no end, "" for an end none of LinkLifetimes
+// gives (a link given its end by hand).
+func (t Team) Lifetime() string {
+	if t.ExpiresAt.IsZero() {
+		return LinkForever
+	}
+	for _, l := range LinkLifetimes {
+		if l.TTL > 0 && t.ExpiresAt.Sub(t.RotatedAt) == l.TTL {
+			return l.Value
+		}
+	}
+	return ""
+}
+
 // LinkTTL is the lifetime a value names, and whether it names one. ""
 // is forever, so a caller that says nothing keeps the old behaviour.
 func LinkTTL(v string) (time.Duration, bool) {
