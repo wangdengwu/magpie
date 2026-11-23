@@ -81,7 +81,7 @@ func TestTokenIssuesAndReplacesALink(t *testing.T) {
 	if _, err := f.srv.Authorize(context.Background(), f.tokenA, Target{}); err != nil {
 		t.Fatalf("the fixture's own token was refused: %v", err)
 	}
-	token, team, err := f.ops().Token("team-a")
+	token, team, err := f.ops().Token("team-a", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestTokenIssuesAndReplacesALink(t *testing.T) {
 func TestTokenForATeamThereIsNot(t *testing.T) {
 	f := newFixture(t)
 	before := f.teamsOnDisk(t)
-	if _, _, err := f.ops().Token("team-c"); err == nil {
+	if _, _, err := f.ops().Token("team-c", 0); err == nil {
 		t.Fatal("a token was issued for a team that isn't there")
 	}
 	after := f.teamsOnDisk(t)

@@ -70,7 +70,9 @@ func (s *Server) teamOf(token string) (Team, error) {
 			found, matched = t, true
 		}
 	}
-	if !matched {
+	// A link past its end is no team, as a rotated one is: the page it
+	// gets says neither which, nor that this one was ever real.
+	if !matched || found.Expired(s.now()) {
 		return Team{}, ErrNoTeam
 	}
 	return found, nil

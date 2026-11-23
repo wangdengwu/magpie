@@ -39,6 +39,7 @@ var (
 	NewOpsWith = teamcore.NewOpsWith
 	NewToken   = teamcore.NewToken
 	HashToken  = teamcore.HashToken
+	LinkTTL    = teamcore.LinkTTL
 )
 
 // NewOps opens the state folder and the admin key, as the portal does, for

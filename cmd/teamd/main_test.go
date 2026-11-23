@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yetone/magpie/internal/teamd"
 	"github.com/yetone/magpie/internal/testenv"
@@ -125,5 +126,91 @@ func TestHelpIsNotAnError(t *testing.T) {
 	}
 	if code, _, stderr := runIn(t, "tokens"); code != 2 || !strings.Contains(stderr, "not a command") {
 		t.Errorf("an unknown command exited %d: %q", code, stderr)
+	}
+}
+
+// teamsIn reads back the teams a state folder's flags point at.
+func teamsIn(t *testing.T, flags []string) []teamd.Team {
+	t.Helper()
+	store, err := teamd.NewStore(flags[len(flags)-1], 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	teams, err := store.Teams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return teams
+}
+
+// TestTokenTakesALifetime: --ttl gives the link an end, no --ttl gives it
+// none, and a lifetime it doesn't know is refused before anything is
+// written.
+func TestTokenTakesALifetime(t *testing.T) {
+	team := teamd.Team{ID: "team-a", Name: "Team A", GroupID: "6f1c2a9d4b70", KeyID: "aaaa1111bbbb2222cccc3333"}
+
+	flags := stateWith(t, team)
+	before := time.Now()
+	if code, _, stderr := runIn(t, append([]string{"teams", "token", "team-a", "--ttl", "30d"}, flags...)...); code != 0 {
+		t.Fatalf("teams token --ttl 30d exited %d: %s", code, stderr)
+	}
+	ends := teamsIn(t, flags)[0].ExpiresAt
+	if lo, hi := before.Add(30*24*time.Hour), time.Now().Add(30*24*time.Hour); ends.Before(lo) || ends.After(hi) {
+		t.Errorf("the link ends %v, want 30 days from the command, between %v and %v", ends, lo, hi)
+	}
+
+	flags = stateWith(t, team)
+	if code, _, stderr := runIn(t, append([]string{"teams", "token", "team-a"}, flags...)...); code != 0 {
+		t.Fatalf("teams token exited %d: %s", code, stderr)
+	}
+	if ends := teamsIn(t, flags)[0].ExpiresAt; !ends.IsZero() {
+		t.Errorf("a link issued with no --ttl ends %v, want never", ends)
+	}
+
+	flags = stateWith(t, team)
+	code, stdout, stderr := runIn(t, append([]string{"teams", "token", "team-a", "--ttl", "nonsense"}, flags...)...)
+	if code != 2 {
+		t.Fatalf("teams token --ttl nonsense exited %d, want 2: %s", code, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("a refused lifetime printed a token: %q", stdout)
+	}
+	if !strings.Contains(stderr, "7d, 30d, 90d or forever") {
+		t.Errorf("the refusal doesn't name the lifetimes there are: %q", stderr)
+	}
+	if got := teamsIn(t, flags)[0]; got.TokenHash != "" || !got.ExpiresAt.IsZero() {
+		t.Errorf("a refused lifetime wrote the team: %+v", got)
+	}
+}
+
+// TestListSaysWhenEachLinkEnds: the TOKEN column tells a link with no end
+// from one with an end, one past it, and no link at all.
+func TestListSaysWhenEachLinkEnds(t *testing.T) {
+	soon := time.Now().Add(48 * time.Hour)
+	flags := stateWith(t,
+		teamd.Team{ID: "team-a", Name: "A", GroupID: "g1", KeyID: "k1", TokenHash: "h1"},
+		teamd.Team{ID: "team-b", Name: "B", GroupID: "g2", KeyID: "k2", TokenHash: "h2", ExpiresAt: soon},
+		teamd.Team{ID: "team-c", Name: "C", GroupID: "g3", KeyID: "k3", TokenHash: "h3", ExpiresAt: time.Now().Add(-time.Hour)},
+		teamd.Team{ID: "team-d", Name: "D", GroupID: "g4", KeyID: "k4"},
+	)
+	code, stdout, stderr := runIn(t, append([]string{"teams", "list"}, flags...)...)
+	if code != 0 {
+		t.Fatalf("teams list exited %d: %s", code, stderr)
+	}
+	for id, want := range map[string]string{
+		"team-a": " live ",
+		"team-b": " live until " + soon.Local().Format("2006-01-02 15:04") + " ",
+		"team-c": " expired ",
+		"team-d": " none ",
+	} {
+		line := ""
+		for _, l := range strings.Split(stdout, "\n") {
+			if strings.HasPrefix(l, id+" ") {
+				line = l
+			}
+		}
+		if !strings.Contains(line, want) {
+			t.Errorf("%s's line is %q, want it to say %q", id, line, want)
+		}
 	}
 }

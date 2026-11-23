@@ -277,6 +277,10 @@ var accountsHTML = `<!doctype html>
   <a class="btn" href="/team/{{.Token}}/add">{{T "accounts.nav.add"}}</a>
 </div>
 
+{{- if .LinkEnds}}
+<p class="note">{{T "accounts.link_ends" (args "At" .LinkEnds)}}</p>
+{{- end}}
+
 {{- if .Added}}
 <p class="note ok">{{T "accounts.added" (args "Entry" .Added)}}</p>
 {{- end}}

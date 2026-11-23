@@ -18,6 +18,7 @@ import (
 	"strings"
 	"syscall"
 	"text/tabwriter"
+	"time"
 
 	"github.com/yetone/magpie/internal/teamd"
 )
@@ -53,6 +54,8 @@ func usage(w io.Writer) {
                              account group and the gateway key
   teamd teams list           the teams, and what each one's group holds
   teamd teams token <team>   issue or rotate a team's link, printed once
+                             (--ttl 7d, 30d, 90d or forever: how long it
+                             opens the team's pages; forever by default)
   teamd teams rm <team>      forget a team, leaving magpie untouched
                              (--force: even while its group holds accounts)
   teamd help                 this
@@ -242,9 +245,16 @@ func teamsList(args []string, stdout, stderr io.Writer) int {
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "ID\tNAME\tGROUP\tKEY\tTOKEN\tACCOUNTS")
+	now := time.Now()
 	for _, r := range rows {
 		token := "none"
-		if r.Team.TokenHash != "" {
+		switch {
+		case r.Team.TokenHash == "":
+		case r.Team.Expired(now):
+			token = "expired"
+		case !r.Team.ExpiresAt.IsZero():
+			token = "live until " + r.Team.ExpiresAt.Local().Format("2006-01-02 15:04")
+		default:
 			token = "live"
 		}
 		accounts := "?"
@@ -262,6 +272,7 @@ func teamsList(args []string, stdout, stderr io.Writer) int {
 
 func teamsToken(args []string, stdout, stderr io.Writer) int {
 	fs, cfg := commonFlags("teamd teams token", stderr)
+	lifetime := fs.String("ttl", "forever", "how long the link opens the team's pages: 7d, 30d, 90d or forever")
 	if err := parse(fs, args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -272,11 +283,18 @@ func teamsToken(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, "teamd: teams token takes one team: teamd teams token <team>\n")
 		return 2
 	}
+	// a lifetime it doesn't know is refused before anything is opened,
+	// never written as some other lifetime
+	ttl, ok := teamd.LinkTTL(*lifetime)
+	if !ok {
+		fmt.Fprintf(stderr, "teamd: --ttl %q is not a lifetime: 7d, 30d, 90d or forever\n", *lifetime)
+		return 2
+	}
 	ops, code := openOps(*cfg, stderr)
 	if ops == nil {
 		return code
 	}
-	token, team, err := ops.Token(fs.Arg(0))
+	token, team, err := ops.Token(fs.Arg(0), ttl)
 	if err != nil {
 		fmt.Fprintf(stderr, "teamd: %v\n", err)
 		return 1

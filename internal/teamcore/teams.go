@@ -224,12 +224,19 @@ func (o *Ops) Hold(ctx context.Context, id string) (Team, error) {
 // it. This is the only time the token exists in the clear: teams.json keeps
 // its hash, so a link lost is rotated here, never recovered. Replacing it
 // kills the old link at once.
-func (o *Ops) Token(id string) (token string, team Team, err error) {
+//
+// ttl is how long the link opens the team's pages, counted from now; 0 is
+// a link with no end, as every link was before they had one.
+func (o *Ops) Token(id string, ttl time.Duration) (token string, team Team, err error) {
 	token, hash, err := NewToken()
 	if err != nil {
 		return "", Team{}, err
 	}
 	at := o.now().UTC()
+	var ends time.Time
+	if ttl > 0 {
+		ends = at.Add(ttl)
+	}
 	err = o.store.Update(func(teams []Team) ([]Team, error) {
 		i := slices.IndexFunc(teams, func(t Team) bool { return strings.EqualFold(t.ID, strings.TrimSpace(id)) })
 		if i < 0 {
@@ -237,6 +244,7 @@ func (o *Ops) Token(id string) (token string, team Team, err error) {
 		}
 		teams[i].TokenHash = hash
 		teams[i].RotatedAt = at
+		teams[i].ExpiresAt = ends
 		team = teams[i]
 		return teams, nil
 	})

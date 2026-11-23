@@ -94,6 +94,10 @@ type Accounts struct {
 	// Notice is what the last switch did, "" when this draw isn't the
 	// answer to one.
 	Notice switchNotice
+	// LinkEnds is when the team's link stops working, in the page's
+	// words, "" for a link with no end: the lead learns it here, before
+	// the link opens nothing.
+	LinkEnds string
 }
 
 // AccountsFor is the page's data: the boundary's grant, then the accounts
@@ -110,6 +114,9 @@ func (s *Server) AccountsFor(ctx context.Context, g Grant, t trans) (Accounts, e
 	}
 	usage, usageErr := s.admin.Usage(ctx, agentClaude)
 	page := Accounts{Trans: t, Team: g.Team(), Group: g.Group(), Now: time.Now()}
+	if ends := g.Team().ExpiresAt; !ends.IsZero() {
+		page.LinkEnds = ends.Local().Format("2006-01-02 15:04")
+	}
 	entries := g.Accounts()
 	if len(entries) > maxAccountsOnPage {
 		page.More = len(entries) - maxAccountsOnPage

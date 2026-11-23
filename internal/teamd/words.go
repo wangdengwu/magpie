@@ -23,6 +23,7 @@ var enWords = words{
 	"accounts.in_use.one":  "{{.On}} of {{.Total}} account in use",
 	"accounts.group":       "account group {{.Name}} ({{.ID}})",
 	"accounts.read":        "allowances read {{.Ago}}",
+	"accounts.link_ends":   "This link stops working on {{.At}}: ask ops for a new one before then.",
 	"accounts.nav.usage":   "Usage",
 	"accounts.nav.connect": "Connect",
 	"accounts.nav.members": "Member keys",
@@ -297,7 +298,7 @@ var enWords = words{
 	// ---- a link that opens nothing, and magpie not answering ----
 	"notfound.title": "teamd",
 	"notfound.big":   "This link opens nothing",
-	"notfound.why":   "The link names no team this portal serves: it was never issued here, or it has been rotated. Ask ops for a new one.",
+	"notfound.why":   "The link names no team this portal serves: it was never issued here, it has been rotated, or it has expired. Ask ops for a new one.",
 
 	"error.title": "teamd",
 	"error.big":   "magpie didn't answer",
@@ -313,6 +314,7 @@ var zhWords = words{
 	"accounts.in_use.one":  "{{.On}}/{{.Total}} 个账号在用",
 	"accounts.group":       "账号组 {{.Name}}（{{.ID}}）",
 	"accounts.read":        "额度读取于 {{.Ago}}",
+	"accounts.link_ends":   "这个链接 {{.At}} 之后失效：在那之前向运维要一个新的。",
 	"accounts.nav.usage":   "用量",
 	"accounts.nav.connect": "接入",
 	"accounts.nav.members": "成员密钥",
@@ -578,7 +580,7 @@ var zhWords = words{
 
 	"notfound.title": "teamd",
 	"notfound.big":   "这个链接打不开",
-	"notfound.why":   "这个链接没有指向本门户服务的任何团队：它不是在这里发的，或者已经被换掉了。向运维要一个新的。",
+	"notfound.why":   "这个链接没有指向本门户服务的任何团队：它不是在这里发的、已经被换掉了，或者已经过期。向运维要一个新的。",
 
 	"error.title": "teamd",
 	"error.big":   "magpie 没有响应",

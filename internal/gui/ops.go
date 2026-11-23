@@ -101,7 +101,7 @@ func opsRoutes(store *teamcore.Store, magpie teamcore.Magpie) http.Handler {
 		if err != nil {
 			return nil, err
 		}
-		token, _, err := ops.Token(team.ID)
+		token, _, err := ops.Token(team.ID, 0)
 		if err != nil {
 			return nil, errors.New("the team was made, but its link couldn't be: " + err.Error())
 		}
@@ -109,7 +109,7 @@ func opsRoutes(store *teamcore.Store, magpie teamcore.Magpie) http.Handler {
 	})
 	// a new link, which cuts the old one off
 	write("/ops/teams/token", func(ctx context.Context, in opsAsk) (any, error) {
-		token, team, err := ops.Token(strings.TrimSpace(in.ID))
+		token, team, err := ops.Token(strings.TrimSpace(in.ID), 0)
 		if err != nil {
 			return nil, err
 		}

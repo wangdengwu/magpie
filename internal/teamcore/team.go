@@ -24,6 +24,51 @@ type Team struct {
 	TokenHash string    `json:"tokenHash,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	RotatedAt time.Time `json:"rotatedAt,omitzero"`
+	// ExpiresAt is when the token stops opening anything, zero for never.
+	// A teams.json written before links had an end has none, so every
+	// link issued then stays as it was: permanent.
+	ExpiresAt time.Time `json:"expiresAt,omitzero"`
+}
+
+// Expired is whether the team's link has reached its end at now. A link
+// with no end never has.
+func (t Team) Expired(now time.Time) bool {
+	return !t.ExpiresAt.IsZero() && !now.Before(t.ExpiresAt)
+}
+
+// LinkLifetime is one lifetime a team's link may be issued for: the value
+// a page posts and a command takes, and the lifetime itself, 0 for a link
+// with no end.
+type LinkLifetime struct {
+	Value string
+	TTL   time.Duration
+}
+
+// LinkLifetimes are the lifetimes a link is offered with, the page's and
+// the command's alike. Forever is the default: a link issued without
+// asking is what every link was before.
+var LinkLifetimes = []LinkLifetime{
+	{"7d", 7 * 24 * time.Hour},
+	{"30d", 30 * 24 * time.Hour},
+	{"90d", 90 * 24 * time.Hour},
+	{LinkForever, 0},
+}
+
+// LinkForever is the lifetime of a link with no end.
+const LinkForever = "forever"
+
+// LinkTTL is the lifetime a value names, and whether it names one. ""
+// is forever, so a caller that says nothing keeps the old behaviour.
+func LinkTTL(v string) (time.Duration, bool) {
+	if v == "" {
+		return 0, true
+	}
+	for _, l := range LinkLifetimes {
+		if l.Value == v {
+			return l.TTL, true
+		}
+	}
+	return 0, false
 }
 
 // tokenBytes is how much randomness a team token carries: 256 bits, far
